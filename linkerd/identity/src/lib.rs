@@ -1,10 +1,10 @@
 #![deny(warnings, rust_2018_idioms)]
-
-pub use ring::error::KeyRejected;
-use ring::rand;
-use ring::signature::EcdsaKeyPair;
-use std::{convert::TryFrom, error::Error, fmt, fs, io, str::FromStr, sync::Arc, time::SystemTime};
+use std::{convert::TryFrom, fmt, fs, io, str::FromStr, sync::Arc, time::SystemTime, error};
 use tracing::{debug, warn};
+
+#[cfg(not(feature = "fips"))]
+#[path = "imp/rustls.rs"]
+mod imp;
 
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_util;
@@ -15,15 +15,42 @@ pub use linkerd_dns_name::InvalidName;
 #[derive(Clone, Debug)]
 pub struct Csr(Arc<Vec<u8>>);
 
+/// An error returned from the TLS implementation.
+pub struct Error(imp::Error);
+
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        error::Error::source(&self.0)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, fmt)
+    }
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, fmt)
+    }
+}
+
+impl From<imp::Error> for Error {
+    fn from(err: imp::Error) -> Error {
+        Error(err)
+    }
+}
+
 /// An endpoint's identity.
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct Name(Arc<linkerd_dns_name::Name>);
 
 #[derive(Clone, Debug)]
-pub struct Key(Arc<EcdsaKeyPair>);
+pub struct Key(imp::Key);
 
-struct SigningKey(Arc<EcdsaKeyPair>);
-struct Signer(Arc<EcdsaKeyPair>);
+struct SigningKey(imp::SigningKey);
+struct Signer(imp::Signer);
 
 #[derive(Clone)]
 pub struct TrustAnchors(Arc<rustls::ClientConfig>);
@@ -86,42 +113,9 @@ impl Csr {
 // === impl Key ===
 
 impl Key {
-    pub fn from_pkcs8(b: &[u8]) -> Result<Self, KeyRejected> {
-        let k = EcdsaKeyPair::from_pkcs8(SIGNATURE_ALG_RING_SIGNING, b)?;
-        Ok(Key(Arc::new(k)))
-    }
-}
-
-impl rustls::sign::SigningKey for SigningKey {
-    fn choose_scheme(
-        &self,
-        offered: &[rustls::SignatureScheme],
-    ) -> Option<Box<dyn rustls::sign::Signer>> {
-        if offered.contains(&SIGNATURE_ALG_RUSTLS_SCHEME) {
-            Some(Box::new(Signer(self.0.clone())))
-        } else {
-            None
-        }
-    }
-
-    fn algorithm(&self) -> rustls::internal::msgs::enums::SignatureAlgorithm {
-        SIGNATURE_ALG_RUSTLS_ALGORITHM
-    }
-}
-
-impl rustls::sign::Signer for Signer {
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, rustls::TLSError> {
-        let rng = rand::SystemRandom::new();
-        self.0
-            .sign(&rng, message)
-            .map(|signature| signature.as_ref().to_owned())
-            .map_err(|ring::error::Unspecified| {
-                rustls::TLSError::General("Signing Failed".to_owned())
-            })
-    }
-
-    fn get_scheme(&self) -> rustls::SignatureScheme {
-        SIGNATURE_ALG_RUSTLS_SCHEME
+    pub fn from_pkcs8(b: &[u8]) -> Result<Self, Error> {
+        let key = imp::Key::from_pkcs8(b)?;
+        Ok(Key(key))
     }
 }
 
