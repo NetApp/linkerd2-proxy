@@ -53,30 +53,21 @@ struct SigningKey(imp::SigningKey);
 struct Signer(imp::Signer);
 
 #[derive(Clone)]
-pub struct TrustAnchors(Arc<rustls::ClientConfig>);
+pub struct TrustAnchors(imp::TrustAnchors);
 
 #[derive(Clone, Debug)]
 pub struct TokenSource(Arc<String>);
 
 #[derive(Clone, Debug)]
-pub struct Crt {
-    id: LocalId,
-    expiry: SystemTime,
-    chain: Vec<rustls::Certificate>,
-}
+pub struct Crt(imp::Crt);
 
 #[derive(Clone)]
-pub struct CrtKey {
-    id: LocalId,
-    expiry: SystemTime,
-    client_config: Arc<rustls::ClientConfig>,
-    server_config: Arc<rustls::ServerConfig>,
-}
+pub struct CrtKey(imp::CrtKey);
 
-struct CertResolver(rustls::sign::CertifiedKey);
+struct CertResolver(imp::CertResolver);
 
 #[derive(Clone, Debug)]
-pub struct InvalidCrt(rustls::TLSError);
+pub struct InvalidCrt(imp::InvalidCrt);
 
 /// A newtype for local server identities.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -205,91 +196,23 @@ impl TokenSource {
 impl TrustAnchors {
     #[cfg(any(test, feature = "test-util"))]
     fn empty() -> Self {
-        TrustAnchors(Arc::new(rustls::ClientConfig::new()))
+        TrustAnchors(imp::TrustAnchors::empty())
     }
 
-    pub fn from_pem(s: &str) -> Option<Self> {
-        use std::io::Cursor;
-
-        let mut roots = rustls::RootCertStore::empty();
-        let (added, skipped) = roots.add_pem_file(&mut Cursor::new(s)).ok()?;
-        if skipped != 0 {
-            warn!("skipped {} trust anchors in trust anchors file", skipped);
+    pub fn from_pem(s: &str) -> Option<TrustAnchors> {
+        match imp::TrustAnchors::from_pem(s) {
+            None => None,
+            Some(ta) => TrustAnchors(ta)
         }
-        if added == 0 {
-            return None;
-        }
-
-        let mut c = rustls::ClientConfig::new();
-
-        // XXX: Rustls's built-in verifiers don't let us tweak things as fully
-        // as we'd like (e.g. controlling the set of trusted signature
-        // algorithms), but they provide good enough defaults for now.
-        // TODO: lock down the verification further.
-        // TODO: Change Rustls's API to Avoid needing to clone `root_cert_store`.
-        c.root_store = roots;
-
-        // Disable session resumption for the time-being until resumption is
-        // more tested.
-        c.enable_tickets = false;
-
-        Some(TrustAnchors(Arc::new(c)))
     }
 
     pub fn certify(&self, key: Key, crt: Crt) -> Result<CrtKey, InvalidCrt> {
-        let mut client = self.0.as_ref().clone();
-
-        // Ensure the certificate is valid for the services we terminate for
-        // TLS. This assumes that server cert validation does the same or
-        // more validation than client cert validation.
-        //
-        // XXX: Rustls currently only provides access to a
-        // `ServerCertVerifier` through
-        // `rustls::ClientConfig::get_verifier()`.
-        //
-        // XXX: Once `rustls::ServerCertVerified` is exposed in Rustls's
-        // safe API, use it to pass proof to CertCertResolver::new....
-        //
-        // TODO: Restrict accepted signatutre algorithms.
-        static NO_OCSP: &[u8] = &[];
-        client
-            .get_verifier()
-            .verify_server_cert(&client.root_store, &crt.chain, (&crt.id).into(), NO_OCSP)
-            .map_err(InvalidCrt)?;
-        debug!("certified {}", crt.id);
-
-        let k = SigningKey(key.0);
-        let key = rustls::sign::CertifiedKey::new(crt.chain, Arc::new(Box::new(k)));
-        let resolver = Arc::new(CertResolver(key));
-
-        // Enable client authentication.
-        client.client_auth_cert_resolver = resolver.clone();
-
-        // Ask TLS clients for a certificate and accept any certificate issued
-        // by our trusted CA(s).
-        //
-        // XXX: Rustls's built-in verifiers don't let us tweak things as fully
-        // as we'd like (e.g. controlling the set of trusted signature
-        // algorithms), but they provide good enough defaults for now.
-        // TODO: lock down the verification further.
-        //
-        // TODO: Change Rustls's API to Avoid needing to clone `root_cert_store`.
-        let mut server = rustls::ServerConfig::new(
-            rustls::AllowAnyAnonymousOrAuthenticatedClient::new(self.0.root_store.clone()),
-        );
-        server.versions = TLS_VERSIONS.to_vec();
-        server.cert_resolver = resolver;
-
-        Ok(CrtKey {
-            id: crt.id,
-            expiry: crt.expiry,
-            client_config: Arc::new(client),
-            server_config: Arc::new(server),
-        })
+        let key = self.0.certify(key.0, crt.0)?;
+        Ok(CrtKey(key))
     }
 
     pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
-        self.0.clone()
+        self.0.client_config()
     }
 }
 
@@ -308,15 +231,11 @@ impl Crt {
         intermediates: Vec<Vec<u8>>,
         expiry: SystemTime,
     ) -> Self {
-        let mut chain = Vec::with_capacity(intermediates.len() + 1);
-        chain.push(rustls::Certificate(leaf));
-        chain.extend(intermediates.into_iter().map(rustls::Certificate));
-
-        Self { id, chain, expiry }
+        Self(imp::Crt::new(id, leaf, intermediates, expiry))
     }
 
     pub fn name(&self) -> &Name {
-        self.id.as_ref()
+        self.0.name()
     }
 }
 
@@ -452,8 +371,8 @@ impl fmt::Display for InvalidCrt {
     }
 }
 
-impl Error for InvalidCrt {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl error::Error for InvalidCrt {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         self.0.source()
     }
 }
