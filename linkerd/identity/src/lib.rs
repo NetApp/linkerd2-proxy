@@ -1,6 +1,5 @@
 #![deny(warnings, rust_2018_idioms)]
 use std::{convert::TryFrom, fmt, fs, io, str::FromStr, sync::Arc, time::SystemTime, error};
-use tracing::{debug, warn};
 
 #[cfg(not(feature = "fips"))]
 #[path = "imp/rustls.rs"]
@@ -25,13 +24,13 @@ impl error::Error for Error {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, fmt)
     }
 }
 
 impl fmt::Debug for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self.0, fmt)
     }
 }
@@ -48,9 +47,6 @@ pub struct Name(Arc<linkerd_dns_name::Name>);
 
 #[derive(Clone, Debug)]
 pub struct Key(imp::Key);
-
-struct SigningKey(imp::SigningKey);
-struct Signer(imp::Signer);
 
 #[derive(Clone)]
 pub struct TrustAnchors(imp::TrustAnchors);
@@ -104,7 +100,7 @@ impl Csr {
 // === impl Key ===
 
 impl Key {
-    pub fn from_pkcs8(b: &[u8]) -> Result<Self, Error> {
+    pub fn from_pkcs8(b: &[u8]) -> Result<Key, Error> {
         let key = imp::Key::from_pkcs8(b)?;
         Ok(Key(key))
     }
@@ -241,7 +237,7 @@ impl Crt {
 
 impl Into<LocalId> for &'_ Crt {
     fn into(self) -> LocalId {
-        self.id.clone()
+        self.0.id.clone()
     }
 }
 
@@ -249,91 +245,31 @@ impl Into<LocalId> for &'_ Crt {
 
 impl CrtKey {
     pub fn name(&self) -> &Name {
-        self.id.as_ref()
+        self.0.name()
     }
 
     pub fn expiry(&self) -> SystemTime {
-        self.expiry
+        self.0.expiry()
     }
 
     pub fn id(&self) -> &LocalId {
-        &self.id
+        &self.0.id()
     }
 
-    pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
-        self.client_config.clone()
-    }
-
-    pub fn server_config(&self) -> Arc<rustls::ServerConfig> {
-        self.server_config.clone()
-    }
+    // pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
+    //     self.client_config.clone()
+    // }
+    //
+    // pub fn server_config(&self) -> Arc<rustls::ServerConfig> {
+    //     self.server_config.clone()
+    // }
 }
 
 impl fmt::Debug for CrtKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         f.debug_struct("CrtKey")
-            .field("id", &self.id)
-            .field("expiry", &self.expiry)
+            .field("inner", &self.0)
             .finish()
-    }
-}
-
-// === impl CertResolver ===
-
-impl rustls::ResolvesClientCert for CertResolver {
-    fn resolve(
-        &self,
-        _acceptable_issuers: &[&[u8]],
-        sigschemes: &[rustls::SignatureScheme],
-    ) -> Option<rustls::sign::CertifiedKey> {
-        // The proxy's server-side doesn't send the list of acceptable issuers so
-        // don't bother looking at `_acceptable_issuers`.
-        self.resolve_(sigschemes)
-    }
-
-    fn has_certs(&self) -> bool {
-        true
-    }
-}
-
-impl CertResolver {
-    fn resolve_(
-        &self,
-        sigschemes: &[rustls::SignatureScheme],
-    ) -> Option<rustls::sign::CertifiedKey> {
-        if !sigschemes.contains(&SIGNATURE_ALG_RUSTLS_SCHEME) {
-            debug!("signature scheme not supported -> no certificate");
-            return None;
-        }
-        Some(self.0.clone())
-    }
-}
-
-impl rustls::ResolvesServerCert for CertResolver {
-    fn resolve(&self, hello: rustls::ClientHello<'_>) -> Option<rustls::sign::CertifiedKey> {
-        let server_name = if let Some(server_name) = hello.server_name() {
-            server_name
-        } else {
-            debug!("no SNI -> no certificate");
-            return None;
-        };
-
-        // Verify that our certificate is valid for the given SNI name.
-        let c = (&self.0.cert)
-            .first()
-            .map(rustls::Certificate::as_ref)
-            .unwrap_or(&[]); // An empty input will fail to parse.
-        if let Err(err) =
-            webpki::EndEntityCert::from(c).and_then(|c| c.verify_is_valid_for_dns_name(server_name))
-        {
-            debug!(
-                "our certificate is not valid for the SNI name -> no certificate: {:?}",
-                err
-            );
-            return None;
-        }
-
-        self.resolve_(hello.sigschemes())
     }
 }
 

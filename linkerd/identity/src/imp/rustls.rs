@@ -4,9 +4,11 @@ use ring::rand;
 use crate::{LocalId, Name};
 use std::time::SystemTime;
 use std::{error, fmt};
+use ring::error::KeyRejected;
+use tracing::{debug, warn};
 
-pub struct SigningKey(Arc<EcdsaKeyPair>);
-pub struct Signer(Arc<EcdsaKeyPair>);
+struct SigningKey(Arc<EcdsaKeyPair>);
+struct Signer(Arc<EcdsaKeyPair>);
 
 #[derive(Clone, Debug)]
 pub struct Key(Arc<EcdsaKeyPair>);
@@ -21,13 +23,13 @@ const SIGNATURE_ALG_RUSTLS_ALGORITHM: rustls::internal::msgs::enums::SignatureAl
 const TLS_VERSIONS: &[rustls::ProtocolVersion] = &[rustls::ProtocolVersion::TLSv1_2];
 
 impl Key {
-    pub fn from_pkcs8(b: &[u8]) -> super::Result<Key> {
+    pub fn from_pkcs8(b: &[u8]) -> Result<Key, Error> {
         let k = EcdsaKeyPair::from_pkcs8(SIGNATURE_ALG_RING_SIGNING, b)?;
         Ok(Key(Arc::new(k)))
     }
 }
 
-pub struct Error(ring::error::KeyRejected);
+pub struct Error(KeyRejected);
 
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
@@ -36,13 +38,13 @@ impl error::Error for Error {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, fmt)
     }
 }
 
 impl fmt::Debug for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self.0, fmt)
     }
 }
@@ -90,7 +92,7 @@ impl TrustAnchors {
         Some(TrustAnchors(Arc::new(c)))
     }
 
-    pub fn certify(&self, key: Key, crt: Crt) -> super::Result<CrtKey> {
+    pub fn certify(&self, key: Key, crt: Crt) -> Result<CrtKey, InvalidCrt> {
         let mut client = self.0.as_ref().clone();
 
         // Ensure the certificate is valid for the services we terminate for
@@ -104,7 +106,7 @@ impl TrustAnchors {
         // XXX: Once `rustls::ServerCertVerified` is exposed in Rustls's
         // safe API, use it to pass proof to CertCertResolver::new....
         //
-        // TODO: Restrict accepted signatutre algorithms.
+        // TODO: Restrict accepted signature algorithms.
         static NO_OCSP: &[u8] = &[];
         client
             .get_verifier()
@@ -203,11 +205,100 @@ pub struct CrtKey {
     server_config: Arc<rustls::ServerConfig>,
 }
 
+// === CrtKey ===
+impl CrtKey {
+    pub fn name(&self) -> &Name {
+        self.id.as_ref()
+    }
+
+    pub fn expiry(&self) -> SystemTime {
+        self.expiry
+    }
+
+    pub fn id(&self) -> &LocalId {
+        &self.id
+    }
+
+    pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
+        self.client_config.clone()
+    }
+
+    pub fn server_config(&self) -> Arc<rustls::ServerConfig> {
+        self.server_config.clone()
+    }
+}
+
+impl fmt::Debug for CrtKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("CrtKey")
+            .field("id", &self.id)
+            .field("expiry", &self.expiry)
+            .finish()
+    }
+}
+
 pub struct CertResolver(rustls::sign::CertifiedKey);
+
+impl rustls::ResolvesClientCert for CertResolver {
+    fn resolve(
+        &self,
+        _acceptable_issuers: &[&[u8]],
+        sigschemes: &[rustls::SignatureScheme],
+    ) -> Option<rustls::sign::CertifiedKey> {
+        // The proxy's server-side doesn't send the list of acceptable issuers so
+        // don't bother looking at `_acceptable_issuers`.
+        self.resolve_(sigschemes)
+    }
+
+    fn has_certs(&self) -> bool {
+        true
+    }
+}
+
+impl CertResolver {
+    fn resolve_(
+        &self,
+        sigschemes: &[rustls::SignatureScheme],
+    ) -> Option<rustls::sign::CertifiedKey> {
+        if !sigschemes.contains(&SIGNATURE_ALG_RUSTLS_SCHEME) {
+            debug!("signature scheme not supported -> no certificate");
+            return None;
+        }
+        Some(self.0.clone())
+    }
+}
+
+impl rustls::ResolvesServerCert for CertResolver {
+    fn resolve(&self, hello: rustls::ClientHello<'_>) -> Option<rustls::sign::CertifiedKey> {
+        let server_name = if let Some(server_name) = hello.server_name() {
+            server_name
+        } else {
+            debug!("no SNI -> no certificate");
+            return None;
+        };
+
+        // Verify that our certificate is valid for the given SNI name.
+        let c = (&self.0.cert)
+            .first()
+            .map(rustls::Certificate::as_ref)
+            .unwrap_or(&[]); // An empty input will fail to parse.
+        if let Err(err) =
+        webpki::EndEntityCert::from(c).and_then(|c| c.verify_is_valid_for_dns_name(server_name))
+        {
+            debug!(
+                "our certificate is not valid for the SNI name -> no certificate: {:?}",
+                err
+            );
+            return None;
+        }
+
+        self.resolve_(hello.sigschemes())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Crt {
-    id: LocalId,
+    pub(crate) id: LocalId,
     expiry: SystemTime,
     chain: Vec<rustls::Certificate>,
 }
