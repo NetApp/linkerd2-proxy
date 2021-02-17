@@ -1,7 +1,7 @@
 #![deny(warnings, rust_2018_idioms)]
 use std::{convert::TryFrom, error, fmt, fs, io, str::FromStr, sync::Arc, time::SystemTime};
 
-#[cfg(not(feature = "fips"))]
+#[cfg(not(feature = "openssl"))]
 #[path = "imp/rustls.rs"]
 mod imp;
 
