@@ -199,9 +199,9 @@ impl TrustAnchors {
         Ok(CrtKey(key))
     }
 
-    pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
-        self.0.client_config()
-    }
+    // pub fn client_config(&self) -> Arc<ClientConfig> {
+    //     Arc::new(ClientConfig(*self.0.client_config()))
+    // }
 }
 
 impl fmt::Debug for TrustAnchors {
@@ -248,13 +248,13 @@ impl CrtKey {
         &self.0.id()
     }
 
-    pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
-        self.0.client_config()
-    }
-
-    pub fn server_config(&self) -> Arc<rustls::ServerConfig> {
-        self.0.server_config().clone()
-    }
+    // pub fn client_config(&self) -> Arc<ClientConfig> {
+    //     Arc::new(ClientConfig(*self.0.client_config()))
+    // }
+    //
+    // pub fn server_config(&self) -> Arc<ServerConfig> {
+    //     Arc::new(ServerConfig(*self.0.server_config()))
+    // }
 }
 
 impl fmt::Debug for CrtKey {
@@ -300,6 +300,34 @@ impl fmt::Display for InvalidCrt {
 impl error::Error for InvalidCrt {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         self.0.source()
+    }
+}
+
+pub struct ClientConfig(pub imp::ClientConfig);
+
+impl From<imp::ClientConfig> for ClientConfig {
+    fn from(conf: imp::ClientConfig) -> Self {
+        Self(conf)
+    }
+}
+
+impl Into<imp::ClientConfig> for ClientConfig {
+    fn into(self) -> imp::ClientConfig{
+        self.0
+    }
+}
+
+pub struct ServerConfig(imp::ServerConfig);
+
+impl From<imp::ServerConfig> for ServerConfig {
+    fn from(conf: imp::ServerConfig) -> Self {
+        Self(conf)
+    }
+}
+
+impl Into<imp::ServerConfig> for ServerConfig {
+    fn into(self) -> imp::ServerConfig{
+        self.0
     }
 }
 

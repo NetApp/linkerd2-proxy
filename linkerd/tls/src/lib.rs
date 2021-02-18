@@ -1,8 +1,13 @@
 #![deny(warnings, rust_2018_idioms)]
 
-pub use linkerd_identity::LocalId;
+use linkerd_identity as id;
+pub use id::LocalId;
 use linkerd_io as io;
 pub use rustls::Session;
+
+#[cfg(not(feature = "openssl"))]
+#[path = "imp/rustls.rs"]
+mod imp;
 
 pub mod client;
 pub mod server;
@@ -11,6 +16,8 @@ pub use self::{
     client::{Client, ClientTls, ConditionalClientTls, NoClientTls, ServerId},
     server::{ClientId, ConditionalServerTls, NewDetectTls, NoServerTls, ServerTls},
 };
+use core::fmt;
+use std::sync::Arc;
 
 /// A trait implented by transport streams to indicate its negotiated protocol.
 pub trait HasNegotiatedProtocol {
@@ -102,5 +109,41 @@ where
             io::EitherIo::Left(l) => l.negotiated_protocol(),
             io::EitherIo::Right(r) => r.negotiated_protocol(),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TlsConnector(imp::TlsConnector);
+
+impl TlsConnector {
+    pub fn new(conf: Arc<id::ClientConfig>) -> Self {
+        Self(imp::TlsConnector::new(conf))
+    }
+}
+
+impl From<Arc<id::ClientConfig>> for TlsConnector {
+    fn from(conf: Arc<id::ClientConfig>) -> Self {
+        TlsConnector::new(conf.clone())
+    }
+}
+
+/// A stream managing a TLS session.
+pub struct TlsStream<S>(imp::TlsStream<S>);
+
+impl<S: fmt::Debug> fmt::Debug for TlsStream<S> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, fmt)
+    }
+}
+
+impl<S> TlsStream<S> {
+    /// Returns a shared reference to the inner stream.
+    pub fn get_ref(&self) -> &S {
+        self.0.get_ref()
+    }
+
+    /// Returns a mutable reference to the inner stream.
+    pub fn get_mut(&mut self) -> &mut S {
+        self.0.get_mut()
     }
 }

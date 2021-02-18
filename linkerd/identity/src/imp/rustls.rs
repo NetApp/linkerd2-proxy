@@ -58,12 +58,12 @@ impl From<ring::error::KeyRejected> for Error {
 }
 
 #[derive(Clone)]
-pub struct TrustAnchors(Arc<rustls::ClientConfig>);
+pub struct TrustAnchors(Arc<ClientConfig>);
 
 impl TrustAnchors {
     #[cfg(any(test, feature = "test-util"))]
     pub fn empty() -> Self {
-        TrustAnchors(Arc::new(rustls::ClientConfig::new()))
+        TrustAnchors(Arc::new(ClientConfig(rustls::ClientConfig::new())))
     }
 
     pub fn from_pem(s: &str) -> Option<Self> {
@@ -91,11 +91,11 @@ impl TrustAnchors {
         // more tested.
         c.enable_tickets = false;
 
-        Some(TrustAnchors(Arc::new(c)))
+        Some(TrustAnchors(Arc::new(ClientConfig(c))))
     }
 
     pub fn certify(&self, key: Key, crt: Crt) -> Result<CrtKey, InvalidCrt> {
-        let mut client = self.0.as_ref().clone();
+        let mut client = self.0.as_ref().clone().as_ref().clone();
 
         // Ensure the certificate is valid for the services we terminate for
         // TLS. This assumes that server cert validation does the same or
@@ -133,7 +133,7 @@ impl TrustAnchors {
         //
         // TODO: Change Rustls's API to Avoid needing to clone `root_cert_store`.
         let mut server = rustls::ServerConfig::new(
-            rustls::AllowAnyAnonymousOrAuthenticatedClient::new(self.0.root_store.clone()),
+            rustls::AllowAnyAnonymousOrAuthenticatedClient::new(client.root_store.clone()),
         );
         server.versions = TLS_VERSIONS.to_vec();
         server.cert_resolver = resolver;
@@ -141,14 +141,14 @@ impl TrustAnchors {
         Ok(CrtKey {
             id: crt.id,
             expiry: crt.expiry,
-            client_config: Arc::new(client),
-            server_config: Arc::new(server),
+            client_config: Arc::new(ClientConfig(client)),
+            server_config: Arc::new(ServerConfig(server)),
         })
     }
 
-    pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
-        self.0.clone()
-    }
+    // pub fn client_config(&self) -> Arc<ClientConfig> {
+    //     self.0.clone()
+    // }
 }
 
 #[derive(Clone, Debug)]
@@ -203,8 +203,8 @@ impl rustls::sign::Signer for Signer {
 pub struct CrtKey {
     id: LocalId,
     expiry: SystemTime,
-    client_config: Arc<rustls::ClientConfig>,
-    server_config: Arc<rustls::ServerConfig>,
+    client_config: Arc<ClientConfig>,
+    server_config: Arc<ServerConfig>,
 }
 
 // === CrtKey ===
@@ -221,13 +221,13 @@ impl CrtKey {
         &self.id
     }
 
-    pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
-        self.client_config.clone()
-    }
-
-    pub fn server_config(&self) -> Arc<rustls::ServerConfig> {
-        self.server_config.clone()
-    }
+    // pub fn client_config(&self) -> Arc<ClientConfig> {
+    //     self.client_config.clone()
+    // }
+    //
+    // pub fn server_config(&self) -> Arc<ServerConfig> {
+    //     self.server_config.clone()
+    // }
 }
 
 impl fmt::Debug for CrtKey {
@@ -323,3 +323,26 @@ impl Crt {
         self.id.as_ref()
     }
 }
+
+pub struct ClientConfig(rustls::ClientConfig);
+
+impl Into<Arc<rustls::ClientConfig>> for ClientConfig {
+    fn into(self) -> Arc<rustls::ClientConfig> {
+        Arc::new(self.into())
+    }
+}
+
+impl Into<rustls::ClientConfig> for ClientConfig {
+    fn into(self) -> rustls::ClientConfig {
+        self.0
+    }
+}
+
+
+impl AsRef<rustls::ClientConfig> for ClientConfig {
+    fn as_ref(&self) -> &rustls::ClientConfig {
+       &self.0
+    }
+}
+
+pub struct ServerConfig(rustls::ServerConfig);

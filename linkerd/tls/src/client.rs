@@ -17,6 +17,7 @@ use std::{
 };
 pub use tokio_rustls::client::TlsStream;
 use tracing::{debug, trace};
+use crate::TlsConnector;
 
 /// A newtype for target server identities.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -54,7 +55,7 @@ pub enum NoClientTls {
 /// known TLS identity.
 pub type ConditionalClientTls = Conditional<ClientTls, NoClientTls>;
 
-pub type Config = Arc<rustls::ClientConfig>;
+pub type Config = Arc<id::ClientConfig>;
 
 #[derive(Clone, Debug)]
 pub struct Client<L, C> {
@@ -128,11 +129,11 @@ where
                 // TODO it would be better to avoid cloning the whole TLS config
                 // per-connection.
                 match alpn {
-                    None => tokio_rustls::TlsConnector::from(local.param()),
+                    None => TlsConnector::from(local.param()),
                     Some(AlpnProtocols(protocols)) => {
-                        let mut config: rustls::ClientConfig = local.param().as_ref().clone();
+                        let mut config = local.param().as_ref().clone();
                         config.alpn_protocols = protocols;
-                        tokio_rustls::TlsConnector::from(Arc::new(config))
+                        TlsConnector::from(Arc::new(config))
                     }
                 }
             }
