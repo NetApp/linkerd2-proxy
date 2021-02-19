@@ -1,6 +1,6 @@
 mod client_hello;
 
-use crate::{LocalId, NegotiatedProtocol, ServerId};
+use crate::{LocalId, NegotiatedProtocol, ServerId, TlsAcceptor};
 use bytes::BytesMut;
 use futures::prelude::*;
 use linkerd_conditional::Conditional;
@@ -22,12 +22,11 @@ pub use tokio_rustls::server::TlsStream;
 use tower::util::ServiceExt;
 use tracing::{debug, trace, warn};
 
-pub type Config = Arc<rustls::ServerConfig>;
+pub type Config = Arc<id::ServerConfig>;
 
 /// Produces a server config that fails to handshake all connections.
 pub fn empty_config() -> Config {
-    let verifier = rustls::NoClientAuth::new();
-    Arc::new(rustls::ServerConfig::new(verifier))
+    Arc::new(id::ServerConfig::empty())
 }
 
 /// A newtype for remote client idenities.
@@ -277,7 +276,7 @@ async fn handshake<T>(tls_config: Config, io: T) -> io::Result<(ServerTls, TlsSt
 where
     T: io::AsyncRead + io::AsyncWrite + Unpin,
 {
-    let io = tokio_rustls::TlsAcceptor::from(tls_config)
+    let io = TlsAcceptor::from(tls_config)
         .accept(io)
         .await?;
 

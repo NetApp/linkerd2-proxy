@@ -1,4 +1,5 @@
 #![deny(warnings, rust_2018_idioms)]
+
 use std::{convert::TryFrom, error, fmt, fs, io, str::FromStr, sync::Arc, time::SystemTime};
 
 #[cfg(not(feature = "openssl"))]
@@ -48,8 +49,7 @@ pub struct Name(Arc<linkerd_dns_name::Name>);
 #[derive(Clone, Debug)]
 pub struct Key(imp::Key);
 
-#[derive(Clone)]
-pub struct TrustAnchors(imp::TrustAnchors);
+
 
 #[derive(Clone, Debug)]
 pub struct TokenSource(Arc<String>);
@@ -57,8 +57,6 @@ pub struct TokenSource(Arc<String>);
 #[derive(Clone, Debug)]
 pub struct Crt(imp::Crt);
 
-#[derive(Clone)]
-pub struct CrtKey(imp::CrtKey);
 
 #[derive(Clone, Debug)]
 pub struct InvalidCrt(imp::InvalidCrt);
@@ -179,7 +177,9 @@ impl TokenSource {
     }
 }
 
-// === impl TrustAnchors ===
+// === TrustAnchors ===
+#[derive(Clone)]
+pub struct TrustAnchors(imp::TrustAnchors);
 
 impl TrustAnchors {
     #[cfg(any(test, feature = "test-util"))]
@@ -199,9 +199,9 @@ impl TrustAnchors {
         Ok(CrtKey(key))
     }
 
-    // pub fn client_config(&self) -> Arc<ClientConfig> {
-    //     Arc::new(ClientConfig(*self.0.client_config()))
-    // }
+    pub fn client_config(&self) -> Arc<ClientConfig> {
+        Arc::new(ClientConfig(self.0.client_config().as_ref().clone()))
+    }
 }
 
 impl fmt::Debug for TrustAnchors {
@@ -234,6 +234,8 @@ impl Into<LocalId> for &'_ Crt {
 }
 
 // === CrtKey ===
+#[derive(Clone)]
+pub struct CrtKey(imp::CrtKey);
 
 impl CrtKey {
     pub fn name(&self) -> &Name {
@@ -248,13 +250,13 @@ impl CrtKey {
         &self.0.id()
     }
 
-    // pub fn client_config(&self) -> Arc<ClientConfig> {
-    //     Arc::new(ClientConfig(*self.0.client_config()))
-    // }
-    //
-    // pub fn server_config(&self) -> Arc<ServerConfig> {
-    //     Arc::new(ServerConfig(*self.0.server_config()))
-    // }
+    pub fn client_config(&self) -> Arc<ClientConfig> {
+        Arc::new(ClientConfig(self.0.client_config().as_ref().clone()))
+    }
+
+    pub fn server_config(&self) -> Arc<ServerConfig> {
+        Arc::new(ServerConfig(self.0.server_config().as_ref().clone()))
+    }
 }
 
 impl fmt::Debug for CrtKey {
@@ -303,7 +305,14 @@ impl error::Error for InvalidCrt {
     }
 }
 
+#[derive(Clone)]
 pub struct ClientConfig(pub imp::ClientConfig);
+
+impl ClientConfig {
+    pub fn set_protocols(&mut self, protocols: Vec<Vec<u8>>) {
+        self.0.set_protocols(protocols);
+    }
+}
 
 impl From<imp::ClientConfig> for ClientConfig {
     fn from(conf: imp::ClientConfig) -> Self {
@@ -312,12 +321,18 @@ impl From<imp::ClientConfig> for ClientConfig {
 }
 
 impl Into<imp::ClientConfig> for ClientConfig {
-    fn into(self) -> imp::ClientConfig{
+    fn into(self) -> imp::ClientConfig {
         self.0
     }
 }
 
-pub struct ServerConfig(imp::ServerConfig);
+pub struct ServerConfig(pub imp::ServerConfig);
+
+impl ServerConfig {
+    pub fn empty() -> Self {
+        Self(imp::ServerConfig::empty())
+    }
+}
 
 impl From<imp::ServerConfig> for ServerConfig {
     fn from(conf: imp::ServerConfig) -> Self {
@@ -326,7 +341,7 @@ impl From<imp::ServerConfig> for ServerConfig {
 }
 
 impl Into<imp::ServerConfig> for ServerConfig {
-    fn into(self) -> imp::ServerConfig{
+    fn into(self) -> imp::ServerConfig {
         self.0
     }
 }

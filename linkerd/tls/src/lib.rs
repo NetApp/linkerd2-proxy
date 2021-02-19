@@ -1,9 +1,11 @@
 #![deny(warnings, rust_2018_idioms)]
 
 use linkerd_identity as id;
+use linkerd_io::{AsyncRead, AsyncWrite};
 pub use id::LocalId;
 use linkerd_io as io;
 pub use rustls::Session;
+pub use tokio_rustls::{Accept, Connect};
 
 #[cfg(not(feature = "openssl"))]
 #[path = "imp/rustls.rs"]
@@ -16,8 +18,8 @@ pub use self::{
     client::{Client, ClientTls, ConditionalClientTls, NoClientTls, ServerId},
     server::{ClientId, ConditionalServerTls, NewDetectTls, NoServerTls, ServerTls},
 };
-use core::fmt;
 use std::sync::Arc;
+use webpki::DNSNameRef;
 
 /// A trait implented by transport streams to indicate its negotiated protocol.
 pub trait HasNegotiatedProtocol {
@@ -112,12 +114,19 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TlsConnector(imp::TlsConnector);
 
 impl TlsConnector {
     pub fn new(conf: Arc<id::ClientConfig>) -> Self {
         Self(imp::TlsConnector::new(conf))
+    }
+
+    pub fn connect<IO>(&self, domain: DNSNameRef<'_>, stream: IO) -> Connect<IO>
+        where
+            IO: AsyncRead + AsyncWrite + Unpin,
+    {
+        self.0.connect(domain, stream)
     }
 }
 
@@ -130,20 +139,42 @@ impl From<Arc<id::ClientConfig>> for TlsConnector {
 /// A stream managing a TLS session.
 pub struct TlsStream<S>(imp::TlsStream<S>);
 
-impl<S: fmt::Debug> fmt::Debug for TlsStream<S> {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, fmt)
+// impl<S: fmt::Debug> fmt::Debug for TlsStream<S> {
+//     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         fmt::Debug::fmt(&self.0, fmt)
+//     }
+// }
+
+// impl<S> TlsStream<S> {
+//     Returns a shared reference to the inner stream.
+    // pub fn get_ref(&self) -> &S {
+    //     self.0.get_ref()
+    // }
+    //
+    // Returns a mutable reference to the inner stream.
+    // pub fn get_mut(&mut self) -> &mut S {
+    //     self.0.get_mut()
+    // }
+// }
+
+#[derive(Clone)]
+pub struct TlsAcceptor(imp::TlsAcceptor);
+
+impl TlsAcceptor {
+    pub fn new(conf: Arc<id::ServerConfig>) -> Self {
+        Self(imp::TlsAcceptor::new(conf))
+    }
+
+    pub fn accept<IO>(&self, stream: IO) -> Accept<IO>
+        where
+            IO: AsyncRead + AsyncWrite + Unpin
+    {
+        self.0.accept(stream)
     }
 }
 
-impl<S> TlsStream<S> {
-    /// Returns a shared reference to the inner stream.
-    pub fn get_ref(&self) -> &S {
-        self.0.get_ref()
-    }
-
-    /// Returns a mutable reference to the inner stream.
-    pub fn get_mut(&mut self) -> &mut S {
-        self.0.get_mut()
+impl From<Arc<id::ServerConfig>> for TlsAcceptor {
+    fn from(conf: Arc<id::ServerConfig>) -> Self {
+        TlsAcceptor::new(conf.clone())
     }
 }

@@ -146,9 +146,9 @@ impl TrustAnchors {
         })
     }
 
-    // pub fn client_config(&self) -> Arc<ClientConfig> {
-    //     self.0.clone()
-    // }
+    pub fn client_config(&self) -> Arc<ClientConfig> {
+        self.0.clone()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -221,13 +221,13 @@ impl CrtKey {
         &self.id
     }
 
-    // pub fn client_config(&self) -> Arc<ClientConfig> {
-    //     self.client_config.clone()
-    // }
-    //
-    // pub fn server_config(&self) -> Arc<ServerConfig> {
-    //     self.server_config.clone()
-    // }
+    pub fn client_config(&self) -> Arc<ClientConfig> {
+        self.client_config.clone()
+    }
+
+    pub fn server_config(&self) -> Arc<ServerConfig> {
+        self.server_config.clone()
+    }
 }
 
 impl fmt::Debug for CrtKey {
@@ -324,7 +324,14 @@ impl Crt {
     }
 }
 
+#[derive(Clone)]
 pub struct ClientConfig(rustls::ClientConfig);
+
+impl ClientConfig {
+    pub fn set_protocols(&mut self, protocols: Vec<Vec<u8>>) {
+        self.0.set_protocols(&*protocols)
+    }
+}
 
 impl Into<Arc<rustls::ClientConfig>> for ClientConfig {
     fn into(self) -> Arc<rustls::ClientConfig> {
@@ -341,8 +348,35 @@ impl Into<rustls::ClientConfig> for ClientConfig {
 
 impl AsRef<rustls::ClientConfig> for ClientConfig {
     fn as_ref(&self) -> &rustls::ClientConfig {
-       &self.0
+        &self.0
     }
 }
 
+#[derive(Clone)]
 pub struct ServerConfig(rustls::ServerConfig);
+
+impl ServerConfig {
+    /// Produces a server config that fails to handshake all connections.
+    pub fn empty() -> Self {
+        let verifier = rustls::NoClientAuth::new();
+        Self(rustls::ServerConfig::new(verifier))
+    }
+}
+
+impl Into<Arc<rustls::ServerConfig>> for ServerConfig {
+    fn into(self) -> Arc<rustls::ServerConfig> {
+        Arc::new(self.into())
+    }
+}
+
+impl Into<rustls::ServerConfig> for ServerConfig {
+    fn into(self) -> rustls::ServerConfig{
+        self.0
+    }
+}
+
+impl AsRef<rustls::ServerConfig> for ServerConfig {
+    fn as_ref(&self) -> &rustls::ServerConfig{
+        &self.0
+    }
+}

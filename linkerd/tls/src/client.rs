@@ -6,7 +6,6 @@ use linkerd_conditional::Conditional;
 use linkerd_identity as id;
 use linkerd_io as io;
 use linkerd_stack::{layer, Param};
-use rustls::Session;
 use std::{
     fmt,
     future::Future,
@@ -131,8 +130,8 @@ where
                 match alpn {
                     None => TlsConnector::from(local.param()),
                     Some(AlpnProtocols(protocols)) => {
-                        let mut config = local.param().as_ref().clone();
-                        config.alpn_protocols = protocols;
+                        let mut config: id::ClientConfig = local.param().as_ref().clone();
+                        config.set_protocols(protocols);
                         TlsConnector::from(Arc::new(config))
                     }
                 }
@@ -148,9 +147,10 @@ where
         Either::Right(Box::pin(async move {
             let io = connect.await?;
             let io = handshake.connect((&server_id.0).into(), io).await?;
-            if let Some(alpn) = io.get_ref().1.get_alpn_protocol() {
-                debug!(alpn = ?std::str::from_utf8(alpn));
-            }
+            // TODO: Reimplement
+            // if let Some(alpn) = io.get_ref().1.get_alpn_protocol() {
+            //     debug!(alpn = ?std::str::from_utf8(alpn));
+            // }
             Ok(io::EitherIo::Right(io))
         }))
     }
