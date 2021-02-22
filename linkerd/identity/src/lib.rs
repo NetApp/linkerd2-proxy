@@ -326,11 +326,16 @@ impl Into<imp::ClientConfig> for ClientConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct ServerConfig(pub imp::ServerConfig);
 
 impl ServerConfig {
     pub fn empty() -> Self {
         Self(imp::ServerConfig::empty())
+    }
+
+    pub fn add_protocols(&mut self, protocols: Vec<u8>) {
+        self.0.add_protocols(protocols);
     }
 }
 

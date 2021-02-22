@@ -361,6 +361,10 @@ impl ServerConfig {
         let verifier = rustls::NoClientAuth::new();
         Self(rustls::ServerConfig::new(verifier))
     }
+
+    pub fn add_protocols(&mut self, protocols: Vec<u8>) {
+        self.0.alpn_protocols.push(protocols)
+    }
 }
 
 impl Into<Arc<rustls::ServerConfig>> for ServerConfig {
