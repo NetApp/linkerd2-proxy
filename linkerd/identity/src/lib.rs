@@ -42,14 +42,8 @@ impl From<imp::Error> for Error {
     }
 }
 
-/// An endpoint's identity.
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub struct Name(Arc<linkerd_dns_name::Name>);
-
 #[derive(Clone, Debug)]
 pub struct Key(imp::Key);
-
-
 
 #[derive(Clone, Debug)]
 pub struct TokenSource(Arc<String>);
@@ -70,6 +64,12 @@ impl From<imp::InvalidCrt> for InvalidCrt {
 /// A newtype for local server identities.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct LocalId(pub Name);
+
+impl<'t> Into<webpki::DNSNameRef<'t>> for &'t LocalId {
+    fn into(self) -> webpki::DNSNameRef<'t> {
+        (&self.0).into()
+    }
+}
 
 // === impl Csr ===
 
@@ -97,6 +97,9 @@ impl Key {
 }
 
 // === impl Name ===
+/// An endpoint's identity.
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct Name(Arc<linkerd_dns_name::Name>);
 
 impl From<linkerd_dns_name::Name> for Name {
     fn from(n: linkerd_dns_name::Name) -> Self {
@@ -104,9 +107,15 @@ impl From<linkerd_dns_name::Name> for Name {
     }
 }
 
-impl<'t> Into<webpki::DNSNameRef<'t>> for &'t LocalId {
-    fn into(self) -> webpki::DNSNameRef<'t> {
-        (&self.0).into()
+impl Into<linkerd_dns_name::Name> for Name {
+    fn into(self) -> linkerd_dns_name::Name {
+        self.0.as_ref().clone()
+    }
+}
+
+impl From<&Name> for Name {
+    fn from(n: &Name) -> Self {
+        Self(n.0.clone())
     }
 }
 

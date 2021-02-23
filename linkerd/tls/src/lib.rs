@@ -4,6 +4,7 @@ use linkerd_identity as id;
 use linkerd_io::{AsyncRead, AsyncWrite};
 pub use id::LocalId;
 use linkerd_io as io;
+use tracing::{debug};
 pub use rustls::Session;
 pub use tokio_rustls::{Accept, Connect};
 
@@ -19,7 +20,7 @@ pub use self::{
     server::{ClientId, ConditionalServerTls, NewDetectTls, NoServerTls, ServerTls},
 };
 use std::sync::Arc;
-use webpki::DNSNameRef;
+use linkerd_identity::Name;
 
 /// A trait implented by transport streams to indicate its negotiated protocol.
 pub trait HasNegotiatedProtocol {
@@ -122,10 +123,12 @@ impl TlsConnector {
         Self(imp::TlsConnector::new(conf))
     }
 
-    pub fn connect<IO>(&self, domain: DNSNameRef<'_>, stream: IO) -> Connect<IO>
+    pub fn connect<IO>(&self, domain: Name, stream: IO) -> Connect<IO>
         where
             IO: AsyncRead + AsyncWrite + Unpin,
     {
+        // TODO: Remove before integration
+        debug!(%domain, "Connecting to ");
         self.0.connect(domain, stream)
     }
 }
@@ -139,24 +142,6 @@ impl From<Arc<id::ClientConfig>> for TlsConnector {
 /// A stream managing a TLS session.
 pub struct TlsStream<S>(imp::TlsStream<S>);
 
-// impl<S: fmt::Debug> fmt::Debug for TlsStream<S> {
-//     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         fmt::Debug::fmt(&self.0, fmt)
-//     }
-// }
-
-// impl<S> TlsStream<S> {
-//     Returns a shared reference to the inner stream.
-    // pub fn get_ref(&self) -> &S {
-    //     self.0.get_ref()
-    // }
-    //
-    // Returns a mutable reference to the inner stream.
-    // pub fn get_mut(&mut self) -> &mut S {
-    //     self.0.get_mut()
-    // }
-// }
-
 #[derive(Clone)]
 pub struct TlsAcceptor(imp::TlsAcceptor);
 
@@ -169,6 +154,8 @@ impl TlsAcceptor {
         where
             IO: AsyncRead + AsyncWrite + Unpin
     {
+        // TODO: Remove before integration
+        debug!("Accepting connection");
         self.0.accept(stream)
     }
 }

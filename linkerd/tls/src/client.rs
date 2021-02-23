@@ -147,7 +147,7 @@ where
         Either::Right(Box::pin(async move {
             let io = connect.await?;
             let io = handshake.connect((&server_id.0).into(), io).await?;
-            // TODO: Reimplement
+            // TODO: Reimplement before integration
             // if let Some(alpn) = io.get_ref().1.get_alpn_protocol() {
             //     debug!(alpn = ?std::str::from_utf8(alpn));
             // }

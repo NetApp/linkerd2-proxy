@@ -1,12 +1,11 @@
-use linkerd_identity as id;
 use std::sync::Arc;
 use std::{io, error, fmt};
 use linkerd_io::{AsyncRead, AsyncWrite};
-use webpki::DNSNameRef;
 use tokio_rustls::{Accept, Connect};
+use tracing::{debug};
+use linkerd_identity::{ClientConfig, ServerConfig, Name};
+use webpki::DNSNameRef;
 
-#[derive(Clone)]
-pub struct TlsConnector(tokio_rustls::TlsConnector);
 
 pub struct HandshakeError(io::Error);
 
@@ -28,18 +27,24 @@ impl fmt::Debug for HandshakeError {
     }
 }
 
+#[derive(Clone)]
+pub struct TlsConnector(tokio_rustls::TlsConnector);
 
 impl TlsConnector {
-    pub fn new(conf: Arc<id::ClientConfig>) -> Self {
+    pub fn new(conf: Arc<ClientConfig>) -> Self {
         let rustls_config: Arc<rustls::ClientConfig> = conf.as_ref().clone().0.into();
+        debug!("Constructing TlsConnector");
         Self(tokio_rustls::TlsConnector::from(rustls_config))
     }
 
-    pub fn connect<IO>(&self, domain: DNSNameRef<'_>, stream: IO) -> Connect<IO>
+    pub fn connect<IO>(&self, domain: Name, stream: IO) -> Connect<IO>
         where
             IO: AsyncRead + AsyncWrite + Unpin,
     {
-        self.0.connect(domain, stream)
+        // TODO: Remove before integration
+        debug!(imp="rustls", "Connecting");
+        let dns = DNSNameRef::try_from_ascii_str(domain.as_ref()).unwrap();
+        self.0.connect(dns, stream)
     }
 }
 
@@ -60,8 +65,10 @@ pub struct TlsStream<S>(tokio_rustls::TlsStream<S>);
 pub struct TlsAcceptor(tokio_rustls::TlsAcceptor);
 
 impl TlsAcceptor {
-    pub fn new(conf: Arc<id::ServerConfig>) -> Self {
+    pub fn new(conf: Arc<ServerConfig>) -> Self {
         let rustls_config: Arc<rustls::ServerConfig> = conf.as_ref().clone().0.into();
+        // TODO: Remove before integration
+        debug!(imp="rustls", "Constructing TlsAcceptor");
         Self(tokio_rustls::TlsAcceptor::from(rustls_config))
     }
 
@@ -69,6 +76,8 @@ impl TlsAcceptor {
         where
             IO: AsyncRead + AsyncWrite + Unpin
     {
+        // TODO: Remove before integration
+        debug!(imp="rustls", "Accepting connection");
         self.0.accept(stream)
     }
 }
