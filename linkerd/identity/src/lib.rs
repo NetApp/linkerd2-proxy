@@ -1,5 +1,5 @@
 #![deny(warnings, rust_2018_idioms)]
-use std::{convert::TryFrom, fmt, fs, io, str::FromStr, sync::Arc, time::SystemTime, error};
+use std::{convert::TryFrom, error, fmt, fs, io, str::FromStr, sync::Arc, time::SystemTime};
 
 #[cfg(not(feature = "fips"))]
 #[path = "imp/rustls.rs"]
@@ -60,26 +60,18 @@ pub struct Crt(imp::Crt);
 #[derive(Clone)]
 pub struct CrtKey(imp::CrtKey);
 
-struct CertResolver(imp::CertResolver);
-
 #[derive(Clone, Debug)]
 pub struct InvalidCrt(imp::InvalidCrt);
+
+impl From<imp::InvalidCrt> for InvalidCrt {
+    fn from(err: imp::InvalidCrt) -> Self {
+        InvalidCrt(err)
+    }
+}
 
 /// A newtype for local server identities.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct LocalId(pub Name);
-
-// These must be kept in sync:
-static SIGNATURE_ALG_RING_SIGNING: &ring::signature::EcdsaSigningAlgorithm =
-    &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
-const SIGNATURE_ALG_RUSTLS_SCHEME: rustls::SignatureScheme =
-    rustls::SignatureScheme::ECDSA_NISTP256_SHA256;
-const SIGNATURE_ALG_RUSTLS_ALGORITHM: rustls::internal::msgs::enums::SignatureAlgorithm =
-    rustls::internal::msgs::enums::SignatureAlgorithm::ECDSA;
-const TLS_VERSIONS: &[rustls::ProtocolVersion] = &[
-    rustls::ProtocolVersion::TLSv1_2,
-    rustls::ProtocolVersion::TLSv1_3,
-];
 
 // === impl Csr ===
 
@@ -198,7 +190,7 @@ impl TrustAnchors {
     pub fn from_pem(s: &str) -> Option<TrustAnchors> {
         match imp::TrustAnchors::from_pem(s) {
             None => None,
-            Some(ta) => TrustAnchors(ta)
+            Some(ta) => Some(TrustAnchors(ta)),
         }
     }
 
@@ -256,20 +248,18 @@ impl CrtKey {
         &self.0.id()
     }
 
-    // pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
-    //     self.client_config.clone()
-    // }
-    //
-    // pub fn server_config(&self) -> Arc<rustls::ServerConfig> {
-    //     self.server_config.clone()
-    // }
+    pub fn client_config(&self) -> Arc<rustls::ClientConfig> {
+        self.0.client_config()
+    }
+
+    pub fn server_config(&self) -> Arc<rustls::ServerConfig> {
+        self.0.server_config().clone()
+    }
 }
 
 impl fmt::Debug for CrtKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        f.debug_struct("CrtKey")
-            .field("inner", &self.0)
-            .finish()
+        f.debug_struct("CrtKey").field("inner", &self.0).finish()
     }
 }
 

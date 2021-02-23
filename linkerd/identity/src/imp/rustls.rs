@@ -1,17 +1,11 @@
+use crate::{LocalId, Name};
+use ring::error::KeyRejected;
+use ring::rand;
 use ring::signature::EcdsaKeyPair;
 use std::sync::Arc;
-use ring::rand;
-use crate::{LocalId, Name};
 use std::time::SystemTime;
 use std::{error, fmt};
-use ring::error::KeyRejected;
 use tracing::{debug, warn};
-
-struct SigningKey(Arc<EcdsaKeyPair>);
-struct Signer(Arc<EcdsaKeyPair>);
-
-#[derive(Clone, Debug)]
-pub struct Key(Arc<EcdsaKeyPair>);
 
 // These must be kept in sync:
 static SIGNATURE_ALG_RING_SIGNING: &ring::signature::EcdsaSigningAlgorithm =
@@ -20,7 +14,15 @@ const SIGNATURE_ALG_RUSTLS_SCHEME: rustls::SignatureScheme =
     rustls::SignatureScheme::ECDSA_NISTP256_SHA256;
 const SIGNATURE_ALG_RUSTLS_ALGORITHM: rustls::internal::msgs::enums::SignatureAlgorithm =
     rustls::internal::msgs::enums::SignatureAlgorithm::ECDSA;
-const TLS_VERSIONS: &[rustls::ProtocolVersion] = &[rustls::ProtocolVersion::TLSv1_2];
+const TLS_VERSIONS: &[rustls::ProtocolVersion] = &[
+    rustls::ProtocolVersion::TLSv1_2,
+    rustls::ProtocolVersion::TLSv1_3];
+
+struct SigningKey(Arc<EcdsaKeyPair>);
+struct Signer(Arc<EcdsaKeyPair>);
+
+#[derive(Clone, Debug)]
+pub struct Key(Arc<EcdsaKeyPair>);
 
 impl Key {
     pub fn from_pkcs8(b: &[u8]) -> Result<Key, Error> {
@@ -33,7 +35,7 @@ pub struct Error(KeyRejected);
 
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        error::Error::source(&self.0)
+        None
     }
 }
 
@@ -283,7 +285,7 @@ impl rustls::ResolvesServerCert for CertResolver {
             .map(rustls::Certificate::as_ref)
             .unwrap_or(&[]); // An empty input will fail to parse.
         if let Err(err) =
-        webpki::EndEntityCert::from(c).and_then(|c| c.verify_is_valid_for_dns_name(server_name))
+            webpki::EndEntityCert::from(c).and_then(|c| c.verify_is_valid_for_dns_name(server_name))
         {
             debug!(
                 "our certificate is not valid for the SNI name -> no certificate: {:?}",
@@ -302,7 +304,6 @@ pub struct Crt {
     expiry: SystemTime,
     chain: Vec<rustls::Certificate>,
 }
-
 
 impl Crt {
     pub fn new(
