@@ -1,12 +1,13 @@
 #![deny(warnings, rust_2018_idioms)]
 
-use linkerd_identity as id;
-use linkerd_io::{AsyncRead, AsyncWrite};
+use futures::Future;
 pub use id::LocalId;
+use linkerd_identity as id;
 use linkerd_io as io;
-use tracing::{debug};
+use linkerd_io::{AsyncRead, AsyncWrite};
 pub use rustls::Session;
-pub use tokio_rustls::{Accept, Connect};
+pub use tokio_rustls::Connect;
+use tracing::debug;
 
 #[cfg(not(feature = "openssl"))]
 #[path = "imp/rustls.rs"]
@@ -19,7 +20,12 @@ pub use self::{
     client::{Client, ClientTls, ConditionalClientTls, NoClientTls, ServerId},
     server::{ClientId, ConditionalServerTls, NewDetectTls, NoServerTls, ServerTls},
 };
-use std::sync::Arc;
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
 use linkerd_identity::Name;
 
 /// A trait implented by transport streams to indicate its negotiated protocol.
@@ -77,16 +83,6 @@ impl<I> HasNegotiatedProtocol for self::client::TlsStream<I> {
     }
 }
 
-impl<I> HasNegotiatedProtocol for self::server::TlsStream<I> {
-    #[inline]
-    fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
-        self.get_ref()
-            .1
-            .get_alpn_protocol()
-            .map(NegotiatedProtocolRef)
-    }
-}
-
 impl HasNegotiatedProtocol for tokio::net::TcpStream {
     #[inline]
     fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
@@ -124,8 +120,8 @@ impl TlsConnector {
     }
 
     pub fn connect<IO>(&self, domain: Name, stream: IO) -> Connect<IO>
-        where
-            IO: AsyncRead + AsyncWrite + Unpin,
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
     {
         // TODO: Remove before integration
         debug!(%domain, "Connecting to ");
@@ -139,9 +135,6 @@ impl From<Arc<id::ClientConfig>> for TlsConnector {
     }
 }
 
-/// A stream managing a TLS session.
-pub struct TlsStream<S>(imp::TlsStream<S>);
-
 #[derive(Clone)]
 pub struct TlsAcceptor(imp::TlsAcceptor);
 
@@ -151,17 +144,33 @@ impl TlsAcceptor {
     }
 
     pub fn accept<IO>(&self, stream: IO) -> Accept<IO>
-        where
-            IO: AsyncRead + AsyncWrite + Unpin
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
     {
         // TODO: Remove before integration
         debug!("Accepting connection");
-        self.0.accept(stream)
+        Accept(self.0.accept(stream))
     }
 }
 
 impl From<Arc<id::ServerConfig>> for TlsAcceptor {
     fn from(conf: Arc<id::ServerConfig>) -> Self {
         TlsAcceptor::new(conf.clone())
+    }
+}
+
+/// Future returned from `TlsAcceptor::accept` which will resolve
+/// once the accept handshake has finished.
+pub struct Accept<IO>(imp::Accept<IO>);
+
+impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Accept<IO> {
+    type Output = io::Result<server::TlsStream<IO>>;
+
+    #[inline]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.0).poll(cx).map(|f| {
+            let ble: server::TlsStream<IO> = f.unwrap().into();
+            Ok(ble)
+        })
     }
 }

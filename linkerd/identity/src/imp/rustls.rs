@@ -16,7 +16,8 @@ const SIGNATURE_ALG_RUSTLS_ALGORITHM: rustls::internal::msgs::enums::SignatureAl
     rustls::internal::msgs::enums::SignatureAlgorithm::ECDSA;
 const TLS_VERSIONS: &[rustls::ProtocolVersion] = &[
     rustls::ProtocolVersion::TLSv1_2,
-    rustls::ProtocolVersion::TLSv1_3];
+    rustls::ProtocolVersion::TLSv1_3,
+];
 
 struct SigningKey(Arc<EcdsaKeyPair>);
 struct Signer(Arc<EcdsaKeyPair>);
@@ -345,7 +346,6 @@ impl Into<rustls::ClientConfig> for ClientConfig {
     }
 }
 
-
 impl AsRef<rustls::ClientConfig> for ClientConfig {
     fn as_ref(&self) -> &rustls::ClientConfig {
         &self.0
@@ -374,13 +374,13 @@ impl Into<Arc<rustls::ServerConfig>> for ServerConfig {
 }
 
 impl Into<rustls::ServerConfig> for ServerConfig {
-    fn into(self) -> rustls::ServerConfig{
+    fn into(self) -> rustls::ServerConfig {
         self.0
     }
 }
 
 impl AsRef<rustls::ServerConfig> for ServerConfig {
-    fn as_ref(&self) -> &rustls::ServerConfig{
+    fn as_ref(&self) -> &rustls::ServerConfig {
         &self.0
     }
 }

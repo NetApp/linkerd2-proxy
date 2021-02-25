@@ -51,7 +51,6 @@ pub struct TokenSource(Arc<String>);
 #[derive(Clone, Debug)]
 pub struct Crt(imp::Crt);
 
-
 #[derive(Clone, Debug)]
 pub struct InvalidCrt(imp::InvalidCrt);
 

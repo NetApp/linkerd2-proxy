@@ -1,11 +1,15 @@
-use std::sync::Arc;
-use std::{io, error, fmt};
+use futures::Future;
+use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io::{AsyncRead, AsyncWrite};
-use tokio_rustls::{Accept, Connect};
-use tracing::{debug};
-use linkerd_identity::{ClientConfig, ServerConfig, Name};
+use std::{error, fmt, io};
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
+use tokio_rustls::Connect;
+use tracing::debug;
 use webpki::DNSNameRef;
-
 
 pub struct HandshakeError(io::Error);
 
@@ -38,17 +42,15 @@ impl TlsConnector {
     }
 
     pub fn connect<IO>(&self, domain: Name, stream: IO) -> Connect<IO>
-        where
-            IO: AsyncRead + AsyncWrite + Unpin,
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
     {
         // TODO: Remove before integration
-        debug!(imp="rustls", "Connecting");
+        debug!(imp = "rustls", "Connecting");
         let dns = DNSNameRef::try_from_ascii_str(domain.as_ref()).unwrap();
         self.0.connect(dns, stream)
     }
 }
-
-pub struct TlsStream<S>(tokio_rustls::TlsStream<S>);
 
 // pub struct Connect<IO>(tokio_rustls::Connect<IO>);
 
@@ -68,16 +70,94 @@ impl TlsAcceptor {
     pub fn new(conf: Arc<ServerConfig>) -> Self {
         let rustls_config: Arc<rustls::ServerConfig> = conf.as_ref().clone().0.into();
         // TODO: Remove before integration
-        debug!(imp="rustls", "Constructing TlsAcceptor");
+        debug!(imp = "rustls", "Constructing TlsAcceptor");
         Self(tokio_rustls::TlsAcceptor::from(rustls_config))
     }
 
     pub fn accept<IO>(&self, stream: IO) -> Accept<IO>
-        where
-            IO: AsyncRead + AsyncWrite + Unpin
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
     {
         // TODO: Remove before integration
-        debug!(imp="rustls", "Accepting connection");
-        self.0.accept(stream)
+        debug!(imp = "rustls", "Accepting connection");
+        Accept(self.0.accept(stream))
+    }
+}
+
+// pub mod client {
+//     pub struct TlsStream<S>(tokio_rustls::client::TlsStream<S>);
+// }
+
+pub mod server {
+    use std::{
+        io,
+        net::SocketAddr,
+        pin::Pin,
+        task::{Context, Poll},
+    };
+
+    use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf};
+
+    #[derive(Debug)]
+    pub struct TlsStream<IO>(tokio_rustls::server::TlsStream<IO>);
+
+    impl<IO> From<tokio_rustls::server::TlsStream<IO>> for TlsStream<IO> {
+        fn from(stream: tokio_rustls::server::TlsStream<IO>) -> Self {
+            TlsStream(stream)
+        }
+    }
+
+    impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
+        fn peer_addr(&self) -> io::Result<SocketAddr> {
+            self.0.get_ref().0.peer_addr()
+        }
+    }
+
+    impl<IO> AsyncRead for TlsStream<IO>
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
+    {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.0).poll_read(cx, buf)
+        }
+    }
+
+    impl<IO> AsyncWrite for TlsStream<IO>
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
+    {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Pin::new(&mut self.0).poll_write(cx, buf)
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.0).poll_flush(cx)
+        }
+
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.0).poll_shutdown(cx)
+        }
+    }
+}
+
+pub struct Accept<IO>(tokio_rustls::Accept<IO>);
+
+impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Accept<IO> {
+    type Output = io::Result<server::TlsStream<IO>>;
+
+    #[inline]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.0).poll(cx).map(|f| {
+            let stream: server::TlsStream<IO> = f.unwrap().into();
+            Ok(stream)
+        })
     }
 }

@@ -1,3 +1,4 @@
+use crate::TlsConnector;
 use futures::{
     future::{Either, MapOk},
     prelude::*,
@@ -16,7 +17,6 @@ use std::{
 };
 pub use tokio_rustls::client::TlsStream;
 use tracing::{debug, trace};
-use crate::TlsConnector;
 
 /// A newtype for target server identities.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
