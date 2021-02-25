@@ -5,8 +5,6 @@ pub use id::LocalId;
 use linkerd_identity as id;
 use linkerd_io as io;
 use linkerd_io::{AsyncRead, AsyncWrite};
-pub use rustls::Session;
-pub use tokio_rustls::Connect;
 use tracing::debug;
 
 #[cfg(not(feature = "openssl"))]
@@ -73,16 +71,6 @@ impl std::fmt::Debug for NegotiatedProtocolRef<'_> {
     }
 }
 
-impl<I> HasNegotiatedProtocol for self::client::TlsStream<I> {
-    #[inline]
-    fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
-        self.get_ref()
-            .1
-            .get_alpn_protocol()
-            .map(NegotiatedProtocolRef)
-    }
-}
-
 impl HasNegotiatedProtocol for tokio::net::TcpStream {
     #[inline]
     fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
@@ -125,13 +113,27 @@ impl TlsConnector {
     {
         // TODO: Remove before integration
         debug!(%domain, "Connecting to ");
-        self.0.connect(domain, stream)
+        Connect(self.0.connect(domain, stream))
     }
 }
 
 impl From<Arc<id::ClientConfig>> for TlsConnector {
     fn from(conf: Arc<id::ClientConfig>) -> Self {
         TlsConnector::new(conf.clone())
+    }
+}
+
+pub struct Connect<IO>(imp::Connect<IO>);
+
+impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
+    type Output = io::Result<client::TlsStream<IO>>;
+
+    #[inline]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.0).poll(cx).map(|f| {
+            let stream: client::TlsStream<IO> = f.unwrap().into();
+            Ok(stream)
+        })
     }
 }
 
@@ -169,8 +171,8 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Accept<IO> {
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.0).poll(cx).map(|f| {
-            let ble: server::TlsStream<IO> = f.unwrap().into();
-            Ok(ble)
+            let stream: server::TlsStream<IO> = f.unwrap().into();
+            Ok(stream)
         })
     }
 }

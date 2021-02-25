@@ -7,7 +7,6 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tokio_rustls::Connect;
 use tracing::debug;
 use webpki::DNSNameRef;
 
@@ -48,20 +47,24 @@ impl TlsConnector {
         // TODO: Remove before integration
         debug!(imp = "rustls", "Connecting");
         let dns = DNSNameRef::try_from_ascii_str(domain.as_ref()).unwrap();
-        self.0.connect(dns, stream)
+        Connect(self.0.connect(dns, stream))
     }
 }
 
-// pub struct Connect<IO>(tokio_rustls::Connect<IO>);
+pub struct Connect<IO>(tokio_rustls::Connect<IO>);
 
-// impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
-//     type Output = io::Result<TlsStream<IO>>;
-//
-//     #[inline]
-//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//         Pin::new(&mut self.0).poll(cx).map_err(|(err, _)| err)
-//     }
-// }
+impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
+    type Output = io::Result<client::TlsStream<IO>>;
+
+    #[inline]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.0).poll(cx).map(|f| {
+            debug!("Connect poll on accept implemenation");
+            let stream: client::TlsStream<IO> = f.unwrap().into();
+            Ok(stream)
+        })
+    }
+}
 
 #[derive(Clone)]
 pub struct TlsAcceptor(tokio_rustls::TlsAcceptor);
@@ -84,9 +87,84 @@ impl TlsAcceptor {
     }
 }
 
-// pub mod client {
-//     pub struct TlsStream<S>(tokio_rustls::client::TlsStream<S>);
-// }
+pub mod client {
+    use std::{
+        io,
+        net::SocketAddr,
+        pin::Pin,
+        task::{Context, Poll},
+    };
+
+    use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf};
+    use rustls::Session;
+    use tracing::debug;
+
+    use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef};
+
+    #[derive(Debug)]
+    pub struct TlsStream<IO>(tokio_rustls::client::TlsStream<IO>);
+
+    impl<IO> From<tokio_rustls::client::TlsStream<IO>> for TlsStream<IO> {
+        fn from(stream: tokio_rustls::client::TlsStream<IO>) -> Self {
+            debug!("Converting from tokio_rusls client tls stream");
+            TlsStream(stream)
+        }
+    }
+
+    impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
+        fn peer_addr(&self) -> io::Result<SocketAddr> {
+            self.0.get_ref().0.peer_addr()
+        }
+    }
+
+    impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
+        #[inline]
+        fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
+            self.0.get_ref()
+                .1
+                .get_alpn_protocol()
+                .map(NegotiatedProtocolRef)
+        }
+    }
+
+    impl<IO> AsyncRead for TlsStream<IO>
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
+    {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            debug!("Poll read on tls client implemenation");
+            Pin::new(&mut self.0).poll_read(cx, buf)
+        }
+    }
+
+    impl<IO> AsyncWrite for TlsStream<IO>
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
+    {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            debug!("Poll write tls client stream implemenation");
+            Pin::new(&mut self.0).poll_write(cx, buf)
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            debug!("Poll flush on tls client stream implemenation");
+            Pin::new(&mut self.0).poll_flush(cx)
+        }
+
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            debug!("Poll flush on tls client stream implemenation");
+            Pin::new(&mut self.0).poll_shutdown(cx)
+        }
+    }
+}
 
 pub mod server {
     use std::{
@@ -97,12 +175,14 @@ pub mod server {
     };
 
     use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf};
+    use tracing::debug;
 
     #[derive(Debug)]
     pub struct TlsStream<IO>(tokio_rustls::server::TlsStream<IO>);
 
     impl<IO> From<tokio_rustls::server::TlsStream<IO>> for TlsStream<IO> {
         fn from(stream: tokio_rustls::server::TlsStream<IO>) -> Self {
+            debug!("Converting from tokio_rusls tls stream");
             TlsStream(stream)
         }
     }
@@ -122,6 +202,7 @@ pub mod server {
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
         ) -> Poll<io::Result<()>> {
+            debug!("Poll read on tls stream implemenation");
             Pin::new(&mut self.0).poll_read(cx, buf)
         }
     }
@@ -135,14 +216,17 @@ pub mod server {
             cx: &mut Context<'_>,
             buf: &[u8],
         ) -> Poll<io::Result<usize>> {
+            debug!("Poll write tls stream implemenation");
             Pin::new(&mut self.0).poll_write(cx, buf)
         }
 
         fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            debug!("Poll flush on tls stream implemenation");
             Pin::new(&mut self.0).poll_flush(cx)
         }
 
         fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            debug!("Poll flush on tls stream implemenation");
             Pin::new(&mut self.0).poll_shutdown(cx)
         }
     }
@@ -156,6 +240,7 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Accept<IO> {
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.0).poll(cx).map(|f| {
+            debug!("Accept poll on accept implemenation");
             let stream: server::TlsStream<IO> = f.unwrap().into();
             Ok(stream)
         })

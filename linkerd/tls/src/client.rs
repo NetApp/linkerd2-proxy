@@ -1,8 +1,9 @@
-use crate::TlsConnector;
+use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef, TlsConnector};
 use futures::{
     future::{Either, MapOk},
     prelude::*,
 };
+use io::ReadBuf;
 use linkerd_conditional::Conditional;
 use linkerd_identity as id;
 use linkerd_io as io;
@@ -15,8 +16,64 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-pub use tokio_rustls::client::TlsStream;
 use tracing::{debug, trace};
+
+use crate::imp;
+
+#[derive(Debug)]
+pub struct TlsStream<IO>(imp::client::TlsStream<IO>);
+
+impl<IO> From<imp::client::TlsStream<IO>> for TlsStream<IO> {
+    fn from(stream: imp::client::TlsStream<IO>) -> Self {
+        debug!("client tls stream converting from implementation");
+        TlsStream(stream)
+    }
+}
+
+impl<IO> io::AsyncRead for TlsStream<IO>
+where
+    IO: io::AsyncRead + io::AsyncWrite + Unpin,
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        debug!("Read polling for client server tls stream");
+        Pin::new(&mut self.0).poll_read(cx, buf)
+    }
+}
+
+impl<IO> io::AsyncWrite for TlsStream<IO>
+where
+    IO: io::AsyncRead + io::AsyncWrite + Unpin,
+{
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        debug!("Poll write for client tls stream");
+        Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        debug!("Poll flush for client tls stream");
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        debug!("Poll shutdown for client tls stream");
+        Pin::new(&mut self.0).poll_shutdown(cx)
+    }
+}
+
+impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
+    #[inline]
+    fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
+        self.0.negotiated_protocol()
+    }
+}
 
 /// A newtype for target server identities.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
