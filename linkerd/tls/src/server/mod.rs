@@ -29,6 +29,12 @@ use crate::imp;
 #[derive(Debug)]
 pub struct TlsStream<IO>(imp::server::TlsStream<IO>);
 
+impl<IO> TlsStream<IO>{
+    pub fn client_identity(&self) -> Option<ClientId> {
+        self.0.client_identity()
+    }
+}
+
 impl<IO> From<imp::server::TlsStream<IO>> for TlsStream<IO> {
     fn from(stream: imp::server::TlsStream<IO>) -> Self {
         debug!("server tls stream converting from implementation");
@@ -74,15 +80,16 @@ where
     }
 }
 
-// impl<T: PeerAddr> PeerAddr for tokio_rustls::client::TlsStream<T> {
-//     fn peer_addr(&self) -> Result<SocketAddr> {
-//         self.get_ref().0.peer_addr()
-//     }
-// }
-
 impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
     fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.peer_addr()
+    }
+}
+
+impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
+    #[inline]
+    fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
+        self.0.negotiated_protocol()
     }
 }
 
@@ -343,45 +350,16 @@ where
     let io = TlsAcceptor::from(tls_config).accept(io).await?;
 
     // Determine the peer's identity, if it exist.
-    let client_id = client_identity(&io);
+    let client_id = io.client_identity();
 
-    //TODO: Fix negotiated prototocol
-    let negotiated_protocol = None;
-    // let negotiated_protocol = io
-    //     .get_ref()
-    //     .1
-    //     .get_alpn_protocol()
-    //     .map(|b| NegotiatedProtocol(b.into()));
+    let negotiated_protocol = io.negotiated_protocol().map(|f| f.to_owned());
 
-    // debug!(client.id = ?client_id, alpn = ?negotiated_protocol, "Accepted TLS connection");
-    debug!(client.id = ?client_id, "Accepted TLS connection");
+    debug!(client.id = ?client_id, alpn = ?negotiated_protocol, "Accepted TLS connection");
     let tls = ServerTls::Established {
         client_id,
         negotiated_protocol,
     };
     Ok((tls, io))
-}
-
-fn client_identity<S>(_: &TlsStream<S>) -> Option<ClientId> {
-    // use webpki::GeneralDNSNameRef;
-
-    // let (_io, session) = tls.get_ref();
-    // let certs = session.get_peer_certificates()?;
-    // let c = certs.first().map(rustls::Certificate::as_ref)?;
-    // let end_cert = webpki::EndEntityCert::from(c).ok()?;
-    // let dns_names = end_cert.dns_names().ok()?;
-
-    // match dns_names.first()? {
-    //     GeneralDNSNameRef::DNSName(n) => {
-    //         Some(ClientId(id::Name::from(dns::Name::from(n.to_owned()))))
-    //     }
-    //     GeneralDNSNameRef::Wildcard(_) => {
-    //         // Wildcards can perhaps be handled in a future path...
-    //         None
-    //     }
-    // }
-
-    None
 }
 
 impl fmt::Display for DetectTimeout {
@@ -435,16 +413,5 @@ impl fmt::Display for NoServerTls {
             Self::PortSkipped => write!(f, "port_skipped"),
             Self::NoClientHello => write!(f, "no_tls_from_remote"),
         }
-    }
-}
-
-impl<I> HasNegotiatedProtocol for TlsStream<I> {
-    #[inline]
-    fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
-        // self.get_ref()
-        //     .1
-        //     .get_alpn_protocol()
-        //     .map(NegotiatedProtocolRef)
-        None
     }
 }

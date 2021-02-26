@@ -60,8 +60,10 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.0).poll(cx).map(|f| {
             debug!("Connect poll on accept implemenation");
-            let stream: client::TlsStream<IO> = f.unwrap().into();
-            Ok(stream)
+            match f {
+                Ok(stream) => Ok(stream.into()),
+                Err(err) => Err(err)
+            }
         })
     }
 }
@@ -120,7 +122,8 @@ pub mod client {
     impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
         #[inline]
         fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
-            self.0.get_ref()
+            self.0
+                .get_ref()
                 .1
                 .get_alpn_protocol()
                 .map(NegotiatedProtocolRef)
@@ -174,11 +177,38 @@ pub mod server {
         task::{Context, Poll},
     };
 
+    use linkerd_dns_name as dns;
+    use linkerd_identity::Name;
     use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf};
+    use rustls::Session;
     use tracing::debug;
+
+    use crate::{ClientId, HasNegotiatedProtocol, NegotiatedProtocolRef};
 
     #[derive(Debug)]
     pub struct TlsStream<IO>(tokio_rustls::server::TlsStream<IO>);
+
+    impl<IO> TlsStream<IO> {
+        pub fn client_identity(&self) -> Option<ClientId> {
+            use webpki::GeneralDNSNameRef;
+
+            let (_io, session) = self.0.get_ref();
+            let certs = session.get_peer_certificates()?;
+            let c = certs.first().map(rustls::Certificate::as_ref)?;
+            let end_cert = webpki::EndEntityCert::from(c).ok()?;
+            let dns_names = end_cert.dns_names().ok()?;
+
+            match dns_names.first()? {
+                GeneralDNSNameRef::DNSName(n) => {
+                    Some(ClientId(Name::from(dns::Name::from(n.to_owned()))))
+                }
+                GeneralDNSNameRef::Wildcard(_) => {
+                    // Wildcards can perhaps be handled in a future path...
+                    None
+                }
+            }
+        }
+    }
 
     impl<IO> From<tokio_rustls::server::TlsStream<IO>> for TlsStream<IO> {
         fn from(stream: tokio_rustls::server::TlsStream<IO>) -> Self {
@@ -228,6 +258,17 @@ pub mod server {
         fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             debug!("Poll flush on tls stream implemenation");
             Pin::new(&mut self.0).poll_shutdown(cx)
+        }
+    }
+
+    impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
+        #[inline]
+        fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
+            self.0
+                .get_ref()
+                .1
+                .get_alpn_protocol()
+                .map(|b| NegotiatedProtocolRef(b.into()))
         }
     }
 }

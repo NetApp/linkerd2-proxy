@@ -131,8 +131,10 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.0).poll(cx).map(|f| {
-            let stream: client::TlsStream<IO> = f.unwrap().into();
-            Ok(stream)
+            match f {
+                Ok(stream) => Ok(stream.into()),
+                Err(err) => Err(err)
+            }
         })
     }
 }
@@ -171,8 +173,10 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Accept<IO> {
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.0).poll(cx).map(|f| {
-            let stream: server::TlsStream<IO> = f.unwrap().into();
-            Ok(stream)
+            match f {
+                Ok(stream) => Ok(stream.into()),
+                Err(err) => Err(err)
+            }
         })
     }
 }
