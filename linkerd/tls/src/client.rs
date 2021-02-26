@@ -1,4 +1,3 @@
-use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef, TlsConnector};
 use futures::{
     future::{Either, MapOk},
     prelude::*,
@@ -18,6 +17,7 @@ use std::{
 };
 use tracing::{debug, trace};
 
+use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef, TlsConnector};
 use crate::imp;
 
 #[derive(Debug)]
