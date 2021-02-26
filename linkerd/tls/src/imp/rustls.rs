@@ -106,6 +106,12 @@ pub mod client {
     #[derive(Debug)]
     pub struct TlsStream<IO>(tokio_rustls::client::TlsStream<IO>);
 
+    impl<IO> TlsStream<IO> {
+        pub fn get_alpn_protocol(&self) -> Option<&[u8]> {
+            self.0.get_ref().1.get_alpn_protocol()
+        }
+    }    
+
     impl<IO> From<tokio_rustls::client::TlsStream<IO>> for TlsStream<IO> {
         fn from(stream: tokio_rustls::client::TlsStream<IO>) -> Self {
             debug!("Converting from tokio_rusls client tls stream");

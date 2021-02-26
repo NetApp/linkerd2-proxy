@@ -17,11 +17,17 @@ use std::{
 };
 use tracing::{debug, trace};
 
-use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef, TlsConnector};
 use crate::imp;
+use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef, TlsConnector};
 
 #[derive(Debug)]
 pub struct TlsStream<IO>(imp::client::TlsStream<IO>);
+
+impl<IO> TlsStream<IO> {
+    pub fn get_alpn_protocol(&self) -> Option<&[u8]> {
+        self.0.get_alpn_protocol()
+    }
+}  
 
 impl<IO> From<imp::client::TlsStream<IO>> for TlsStream<IO> {
     fn from(stream: imp::client::TlsStream<IO>) -> Self {
@@ -207,10 +213,9 @@ where
         Either::Right(Box::pin(async move {
             let io = connect.await?;
             let io = handshake.connect((&server_id.0).into(), io).await?;
-            // TODO: Reimplement before integration
-            // if let Some(alpn) = io.get_ref().1.get_alpn_protocol() {
-            //     debug!(alpn = ?std::str::from_utf8(alpn));
-            // }
+            if let Some(alpn) = io.get_alpn_protocol() {
+                debug!(alpn = ?std::str::from_utf8(alpn));
+            }
             Ok(io::EitherIo::Right(io))
         }))
     }
