@@ -7,7 +7,6 @@ use crate::{
 use bytes::BytesMut;
 use futures::prelude::*;
 use linkerd_conditional::Conditional;
-// use linkerd_dns_name as dns;
 use linkerd_error::Error;
 use linkerd_identity as id;
 use linkerd_io::{self as io, AsyncReadExt, EitherIo, PeerAddr, PrefixedIo, ReadBuf};
@@ -29,7 +28,7 @@ use crate::imp;
 #[derive(Debug)]
 pub struct TlsStream<IO>(imp::server::TlsStream<IO>);
 
-impl<IO> TlsStream<IO>{
+impl<IO> TlsStream<IO> {
     pub fn client_identity(&self) -> Option<ClientId> {
         self.0.client_identity()
     }
@@ -351,8 +350,8 @@ where
 
     // Determine the peer's identity, if it exist.
     let client_id = io.client_identity();
-
-    let negotiated_protocol = io.negotiated_protocol().map(|f| f.to_owned());
+    // Extract the negotiated protocol for the stream.
+    let negotiated_protocol = io.negotiated_protocol().map(|prot| prot.to_owned());
 
     debug!(client.id = ?client_id, alpn = ?negotiated_protocol, "Accepted TLS connection");
     let tls = ServerTls::Established {

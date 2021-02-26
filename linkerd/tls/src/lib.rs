@@ -5,27 +5,26 @@ pub use linkerd_identity::LocalId;
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io as io;
 use linkerd_io::{AsyncRead, AsyncWrite};
-use tracing::debug;
 
 #[cfg(not(feature = "openssl"))]
 #[path = "imp/rustls.rs"]
 mod imp;
 
+mod protocol;
+
 pub mod client;
 pub mod server;
-mod protocol;
 
 pub use self::{
     client::{Client, ClientTls, ConditionalClientTls, NoClientTls, ServerId},
+    protocol::{HasNegotiatedProtocol, NegotiatedProtocol, NegotiatedProtocolRef},
     server::{ClientId, ConditionalServerTls, NewDetectTls, NoServerTls, ServerTls},
-    protocol::{NegotiatedProtocol, NegotiatedProtocolRef, HasNegotiatedProtocol},
 };
 use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
-
 
 #[derive(Clone)]
 pub struct TlsConnector(imp::TlsConnector);
@@ -39,8 +38,6 @@ impl TlsConnector {
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        // TODO: Remove before integration
-        debug!(%domain, "Connecting to ");
         Connect(self.0.connect(domain, stream))
     }
 }
@@ -80,8 +77,6 @@ impl TlsAcceptor {
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        // TODO: Remove before integration
-        debug!("Accepting connection");
         Accept(self.0.accept(stream))
     }
 }

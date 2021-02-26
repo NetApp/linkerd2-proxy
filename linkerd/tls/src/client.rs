@@ -27,11 +27,10 @@ impl<IO> TlsStream<IO> {
     pub fn get_alpn_protocol(&self) -> Option<&[u8]> {
         self.0.get_alpn_protocol()
     }
-}  
+}
 
 impl<IO> From<imp::client::TlsStream<IO>> for TlsStream<IO> {
     fn from(stream: imp::client::TlsStream<IO>) -> Self {
-        debug!("client tls stream converting from implementation");
         TlsStream(stream)
     }
 }
@@ -45,7 +44,6 @@ where
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        debug!("Read polling for client server tls stream");
         Pin::new(&mut self.0).poll_read(cx, buf)
     }
 }
@@ -59,17 +57,14 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        debug!("Poll write for client tls stream");
         Pin::new(&mut self.0).poll_write(cx, buf)
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        debug!("Poll flush for client tls stream");
         Pin::new(&mut self.0).poll_flush(cx)
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        debug!("Poll shutdown for client tls stream");
         Pin::new(&mut self.0).poll_shutdown(cx)
     }
 }
