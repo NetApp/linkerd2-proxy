@@ -30,7 +30,6 @@ impl<IO> From<imp::client::TlsStream<IO>> for TlsStream<IO> {
     }
 }
 
-
 impl<IO> io::AsyncRead for TlsStream<IO>
 where
     IO: io::AsyncRead + io::AsyncWrite + Unpin,
@@ -69,7 +68,10 @@ where
     }
 }
 
-impl<IO: HasNegotiatedProtocol> HasNegotiatedProtocol for TlsStream<IO> {
+impl<IO> HasNegotiatedProtocol for TlsStream<IO>
+where
+    IO: HasNegotiatedProtocol,
+{
     #[inline]
     fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
         self.0.negotiated_protocol()

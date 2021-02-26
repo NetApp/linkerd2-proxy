@@ -125,16 +125,17 @@ impl From<Arc<id::ClientConfig>> for TlsConnector {
 
 pub struct Connect<IO>(imp::Connect<IO>);
 
-impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
+impl<IO> Future for Connect<IO>
+where
+    IO: AsyncRead + AsyncWrite + Unpin,
+{
     type Output = io::Result<client::TlsStream<IO>>;
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.0).poll(cx).map(|f| {
-            match f {
-                Ok(stream) => Ok(stream.into()),
-                Err(err) => Err(err)
-            }
+        Pin::new(&mut self.0).poll(cx).map(|f| match f {
+            Ok(stream) => Ok(stream.into()),
+            Err(err) => Err(err),
         })
     }
 }
@@ -167,16 +168,17 @@ impl From<Arc<id::ServerConfig>> for TlsAcceptor {
 /// once the accept handshake has finished.
 pub struct Accept<IO>(imp::Accept<IO>);
 
-impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Accept<IO> {
+impl<IO> Future for Accept<IO>
+where
+    IO: AsyncRead + AsyncWrite + Unpin,
+{
     type Output = io::Result<server::TlsStream<IO>>;
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.0).poll(cx).map(|f| {
-            match f {
-                Ok(stream) => Ok(stream.into()),
-                Err(err) => Err(err)
-            }
+        Pin::new(&mut self.0).poll(cx).map(|f| match f {
+            Ok(stream) => Ok(stream.into()),
+            Err(err) => Err(err),
         })
     }
 }
