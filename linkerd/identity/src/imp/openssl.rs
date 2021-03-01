@@ -2,7 +2,6 @@ use crate::{LocalId, Name};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::{error, fmt};
-
 #[derive(Clone, Debug)]
 pub struct Key(Arc<String>);
 
@@ -31,12 +30,6 @@ impl fmt::Debug for Error {
         fmt::Debug::fmt(&self.0, fmt)
     }
 }
-
-// impl From<ring::error::KeyRejected> for Error {
-//     fn from(error: ring::error::KeyRejected) -> Error {
-//         Error(error)
-//     }
-// }
 
 #[derive(Clone)]
 pub struct TrustAnchors(Arc<String>);

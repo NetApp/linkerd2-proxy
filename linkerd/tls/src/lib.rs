@@ -6,9 +6,14 @@ use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io as io;
 use linkerd_io::{AsyncRead, AsyncWrite};
 
+// #[cfg(not(feature = "openssl"))]
+// #[path = "imp/rustls.rs"]
+// mod imp;
 #[cfg(not(feature = "openssl"))]
-#[path = "imp/rustls.rs"]
+#[path = "imp/openssl.rs"]
 mod imp;
+
+
 
 mod protocol;
 
