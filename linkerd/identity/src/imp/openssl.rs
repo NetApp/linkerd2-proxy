@@ -1,21 +1,48 @@
 use crate::{LocalId, Name};
+use openssl::{
+    error::ErrorStack,
+    x509::{
+        store::{X509Store, X509StoreBuilder},
+        X509,
+    },
+};
+use ring::signature::EcdsaKeyPair;
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::{error, fmt};
-#[derive(Clone, Debug)]
-pub struct Key(Arc<String>);
+use tracing::{debug, warn};
+
+#[derive(Clone)]
+pub struct Key(Arc<EcdsaKeyPair>);
 
 impl Key {
-    pub fn from_pkcs8(_b: &[u8]) -> Result<Key, Error> {
-        unimplemented!()
+    pub fn from_pkcs8(b: &[u8]) -> Result<Key, Error> {
+        // let key = EcdsaSig::from_der(b)?;
+        // Ok(Self(Arc::new(key)))
+
+        let k =
+            EcdsaKeyPair::from_pkcs8(&ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING, b).unwrap();
+        Ok(Key(Arc::new(k)))
     }
 }
 
-pub struct Error(String);
+impl fmt::Debug for Key {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(fmt, "Ble")
+    }
+}
+
+pub struct Error(ErrorStack);
+
+impl From<ErrorStack> for Error {
+    fn from(err: ErrorStack) -> Self {
+        Error(err)
+    }
+}
 
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
+        error::Error::source(&self.0)
     }
 }
 
@@ -32,7 +59,7 @@ impl fmt::Debug for Error {
 }
 
 #[derive(Clone)]
-pub struct TrustAnchors(Arc<String>);
+pub struct TrustAnchors(Arc<X509Store>);
 
 impl TrustAnchors {
     #[cfg(any(test, feature = "test-util"))]
@@ -40,12 +67,27 @@ impl TrustAnchors {
         unimplemented!()
     }
 
-    pub fn from_pem(_s: &str) -> Option<Self> {
-        unimplemented!()
+    pub fn from_pem(s: &str) -> Option<Self> {
+        let mut store = X509StoreBuilder::new().unwrap();
+
+        match X509::from_pem(s.as_bytes()) {
+            Ok(cert) => {
+                debug!("Adding trust {:?}", cert);
+                store.add_cert(cert).unwrap();
+            }
+            Err(err) => warn!("unable to construct trust anchor {}", err),
+        }
+
+        Some(Self(Arc::new(store.build())))
     }
 
-    pub fn certify(&self, _key: Key, _crt: Crt) -> Result<CrtKey, InvalidCrt> {
-        unimplemented!()
+    pub fn certify(&self, _: Key, crt: Crt) -> Result<CrtKey, InvalidCrt> {
+        Ok(CrtKey {
+            id: crt.id,
+            expiry: crt.expiry,
+            client_config: Arc::new(ClientConfig),
+            server_config: Arc::new(ServerConfig),
+        })
     }
 
     pub fn client_config(&self) -> Arc<ClientConfig> {
@@ -113,17 +155,26 @@ impl fmt::Debug for CrtKey {
 pub struct Crt {
     pub(crate) id: LocalId,
     expiry: SystemTime,
-    // chain: Vec<rustls::Certificate>,
+    chain: Vec<X509>,
 }
 
 impl Crt {
     pub fn new(
-        _id: LocalId,
-        _leaf: Vec<u8>,
-        _intermediates: Vec<Vec<u8>>,
-        _expiry: SystemTime,
+        id: LocalId,
+        leaf: Vec<u8>,
+        intermediates: Vec<Vec<u8>>,
+        expiry: SystemTime,
     ) -> Self {
-        unimplemented!()
+        let mut chain = Vec::with_capacity(intermediates.len() + 1);
+        let cert = X509::from_der(&leaf).unwrap();
+        chain.push(cert);
+        chain.extend(
+            intermediates
+                .into_iter()
+                .map(|crt| X509::from_der(&crt).unwrap()),
+        );
+
+        Self { id, chain, expiry }
     }
 
     pub fn name(&self) -> &Name {
