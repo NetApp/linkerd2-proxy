@@ -13,8 +13,6 @@ use linkerd_io::{AsyncRead, AsyncWrite};
 #[path = "imp/openssl.rs"]
 mod imp;
 
-
-
 mod protocol;
 
 pub mod client;

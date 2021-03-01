@@ -1,34 +1,34 @@
 use crate::{LocalId, Name};
-use openssl::{
-    error::ErrorStack,
-    x509::{
+use openssl::{ec::{EcKey}, error::ErrorStack, pkey::{self, PKey, Private}, x509::{
         store::{X509Store, X509StoreBuilder},
         X509,
-    },
-};
-use ring::signature::EcdsaKeyPair;
+    }};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::{error, fmt};
 use tracing::{debug, warn};
 
 #[derive(Clone)]
-pub struct Key(Arc<EcdsaKeyPair>);
+pub struct Key {
+   inner: Arc<EcKey<Private>>,
+   pub id: pkey::Id,
+}
 
 impl Key {
     pub fn from_pkcs8(b: &[u8]) -> Result<Key, Error> {
-        // let key = EcdsaSig::from_der(b)?;
-        // Ok(Self(Arc::new(key)))
+        let key= PKey::private_key_from_pkcs8(b).unwrap();
+        let private_key = key.ec_key().unwrap();
 
-        let k =
-            EcdsaKeyPair::from_pkcs8(&ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING, b).unwrap();
-        Ok(Key(Arc::new(k)))
+        Ok(Key {
+            inner: Arc::new(private_key),
+            id: key.id()
+        })
     }
 }
 
 impl fmt::Debug for Key {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "Ble")
+        write!(fmt, "key id {}", self.id.as_raw())
     }
 }
 
@@ -91,7 +91,7 @@ impl TrustAnchors {
     }
 
     pub fn client_config(&self) -> Arc<ClientConfig> {
-        unimplemented!()
+        Arc::new(ClientConfig)
     }
 }
 

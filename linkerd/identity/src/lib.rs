@@ -13,6 +13,7 @@ mod imp;
 pub mod test_util;
 
 pub use linkerd_dns_name::InvalidName;
+use tracing::debug;
 
 /// A DER-encoded X.509 certificate signing request.
 #[derive(Clone, Debug)]
@@ -206,6 +207,8 @@ impl TrustAnchors {
     }
 
     pub fn certify(&self, key: Key, crt: Crt) -> Result<CrtKey, InvalidCrt> {
+        debug!("Certifying key {:?} and Certificate {:?}", key, crt);
+        
         let key = self.0.certify(key.0, crt.0)?;
         Ok(CrtKey(key))
     }
