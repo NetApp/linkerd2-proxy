@@ -1,33 +1,12 @@
 use futures::Future;
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
-use linkerd_io::{AsyncRead, AsyncWrite};
-use std::{error, fmt, io};
+use linkerd_io::{AsyncRead, AsyncWrite, Result};
 use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 use webpki::DNSNameRef;
-
-pub struct HandshakeError(io::Error);
-
-impl error::Error for HandshakeError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        error::Error::source(&self.0)
-    }
-}
-
-impl fmt::Display for HandshakeError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, fmt)
-    }
-}
-
-impl fmt::Debug for HandshakeError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, fmt)
-    }
-}
 
 #[derive(Clone)]
 pub struct TlsConnector(tokio_rustls::TlsConnector);
@@ -50,7 +29,7 @@ impl TlsConnector {
 pub struct Connect<IO>(tokio_rustls::Connect<IO>);
 
 impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
-    type Output = io::Result<client::TlsStream<IO>>;
+    type Output = Result<client::TlsStream<IO>>;
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -80,13 +59,12 @@ impl TlsAcceptor {
 
 pub mod client {
     use std::{
-        io,
         net::SocketAddr,
         pin::Pin,
         task::{Context, Poll},
     };
 
-    use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf};
+    use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result};
     use rustls::Session;
 
     use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef};
@@ -107,7 +85,7 @@ pub mod client {
     }
 
     impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
-        fn peer_addr(&self) -> io::Result<SocketAddr> {
+        fn peer_addr(&self) -> Result<SocketAddr> {
             self.0.get_ref().0.peer_addr()
         }
     }
@@ -131,7 +109,7 @@ pub mod client {
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
-        ) -> Poll<io::Result<()>> {
+        ) -> Poll<Result<()>> {
             Pin::new(&mut self.0).poll_read(cx, buf)
         }
     }
@@ -144,15 +122,15 @@ pub mod client {
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
             buf: &[u8],
-        ) -> Poll<io::Result<usize>> {
+        ) -> Poll<Result<usize>> {
             Pin::new(&mut self.0).poll_write(cx, buf)
         }
 
-        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
             Pin::new(&mut self.0).poll_flush(cx)
         }
 
-        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
             Pin::new(&mut self.0).poll_shutdown(cx)
         }
     }
@@ -160,7 +138,6 @@ pub mod client {
 
 pub mod server {
     use std::{
-        io,
         net::SocketAddr,
         pin::Pin,
         task::{Context, Poll},
@@ -168,7 +145,7 @@ pub mod server {
 
     use linkerd_dns_name as dns;
     use linkerd_identity::Name;
-    use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf};
+    use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result};
     use rustls::Session;
 
     use crate::{ClientId, HasNegotiatedProtocol, NegotiatedProtocolRef};
@@ -205,7 +182,7 @@ pub mod server {
     }
 
     impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
-        fn peer_addr(&self) -> io::Result<SocketAddr> {
+        fn peer_addr(&self) -> Result<SocketAddr> {
             self.0.get_ref().0.peer_addr()
         }
     }
@@ -218,7 +195,7 @@ pub mod server {
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
-        ) -> Poll<io::Result<()>> {
+        ) -> Poll<Result<()>> {
             Pin::new(&mut self.0).poll_read(cx, buf)
         }
     }
@@ -231,15 +208,15 @@ pub mod server {
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
             buf: &[u8],
-        ) -> Poll<io::Result<usize>> {
+        ) -> Poll<Result<usize>> {
             Pin::new(&mut self.0).poll_write(cx, buf)
         }
 
-        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
             Pin::new(&mut self.0).poll_flush(cx)
         }
 
-        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
             Pin::new(&mut self.0).poll_shutdown(cx)
         }
     }
@@ -259,7 +236,7 @@ pub mod server {
 pub struct Accept<IO>(tokio_rustls::Accept<IO>);
 
 impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Accept<IO> {
-    type Output = io::Result<server::TlsStream<IO>>;
+    type Output = Result<server::TlsStream<IO>>;
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

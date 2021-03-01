@@ -5,6 +5,9 @@ use std::{convert::TryFrom, error, fmt, fs, io, str::FromStr, sync::Arc, time::S
 #[cfg(not(feature = "openssl"))]
 #[path = "imp/rustls.rs"]
 mod imp;
+// #[cfg(not(feature = "openssl"))]
+// #[path = "imp/openssl.rs"]
+// mod imp;
 
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_util;
