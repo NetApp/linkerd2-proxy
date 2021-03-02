@@ -50,7 +50,7 @@ pub struct TrustAnchors(Arc<X509Store>);
 impl TrustAnchors {
     #[cfg(any(test, feature = "test-util"))]
     pub fn empty() -> Self {
-        unimplemented!()
+        Self(Arc::new(X509StoreBuilder::new().unwrap().build()))
     }
 
     pub fn from_pem(s: &str) -> Option<Self> {
@@ -71,13 +71,13 @@ impl TrustAnchors {
         Ok(CrtKey {
             id: crt.id,
             expiry: crt.expiry,
-            client_config: Arc::new(ClientConfig),
-            server_config: Arc::new(ServerConfig),
+            client_config: Arc::new(ClientConfig::empty()),
+            server_config: Arc::new(ServerConfig::empty()),
         })
     }
 
     pub fn client_config(&self) -> Arc<ClientConfig> {
-        Arc::new(ClientConfig)
+        Arc::new(ClientConfig::empty())
     }
 }
 
@@ -169,60 +169,42 @@ impl Crt {
 }
 
 #[derive(Clone)]
-pub struct ClientConfig;
+pub struct ClientConfig {
+    protocols: Arc<Vec<Vec<u8>>>
+}
 
 impl ClientConfig {
-    pub fn set_protocols(&mut self, _protocols: Vec<Vec<u8>>) {
-        unimplemented!()
+    pub fn new(protocols: Vec<Vec<u8>>) -> Self {
+        Self {
+            protocols: Arc::new(protocols)
+        }
+    }
+    pub fn empty() -> Self {
+        ClientConfig::new(Vec::new())
+    }
+
+    pub fn set_protocols(&mut self, protocols: Vec<Vec<u8>>) {
+        self.protocols = Arc::new(protocols)
     }
 }
-
-// impl Into<Arc<rustls::ClientConfig>> for ClientConfig {
-//     fn into(self) -> Arc<rustls::ClientConfig> {
-//         Arc::new(self.into())
-//     }
-// }
-
-// impl Into<rustls::ClientConfig> for ClientConfig {
-//     fn into(self) -> rustls::ClientConfig {
-//         self.0
-//     }
-// }
-
-// impl AsRef<rustls::ClientConfig> for ClientConfig {
-//     fn as_ref(&self) -> &rustls::ClientConfig {
-//         &self.0
-//     }
-// }
 
 #[derive(Clone)]
-pub struct ServerConfig;
-
-impl ServerConfig {
-    /// Produces a server config that fails to handshake all connections.
-    pub fn empty() -> Self {
-        unimplemented!()
-    }
-
-    pub fn add_protocols(&mut self, _protocols: Vec<u8>) {
-        unimplemented!()
-    }
+pub struct ServerConfig {
+    alpn_protocols: Arc<Vec<Vec<u8>>>,
 }
 
-// impl Into<Arc<rustls::ServerConfig>> for ServerConfig {
-//     fn into(self) -> Arc<rustls::ServerConfig> {
-//         Arc::new(self.into())
-//     }
-// }
+impl ServerConfig {
+    pub fn new(alpn_protocols: Vec<Vec<u8>>) -> Self {
+        Self {
+            alpn_protocols: Arc::new(alpn_protocols)
+        }
+    }
+    /// Produces a server config that fails to handshake all connections.
+    pub fn empty() -> Self {
+        ServerConfig::new(Vec::new())
+    }
 
-// impl Into<rustls::ServerConfig> for ServerConfig {
-//     fn into(self) -> rustls::ServerConfig {
-//         self.0
-//     }
-// }
-
-// impl AsRef<rustls::ServerConfig> for ServerConfig {
-//     fn as_ref(&self) -> &rustls::ServerConfig {
-//         &self.0
-//     }
-// }
+    pub fn add_protocols(&mut self, protocols: Vec<u8>) {
+        self.alpn_protocols.as_ref().clone().push(protocols)
+    }
+}
