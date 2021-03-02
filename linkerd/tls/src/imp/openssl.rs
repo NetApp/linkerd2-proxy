@@ -8,22 +8,30 @@ use std::{
 };
 
 #[derive(Clone)]
-pub struct TlsConnector;
+pub struct TlsConnector(tokio_native_tls::TlsConnector);
 
 impl TlsConnector {
     pub fn new(_conf: Arc<ClientConfig>) -> Self {
-        unimplemented!()
+        let conn = tokio_native_tls::native_tls::TlsConnector::new().unwrap();
+        conn.into()
     }
 
-    pub fn connect<IO>(&self, _domain: Name, _stream: IO) -> Connect<IO>
+    pub fn connect<IO>(&self, domain: Name, stream: IO) -> Connect<IO>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        unimplemented!()
+        let x = self.0.connect(domain.as_ref().into(), stream).unwrap();
+        Connect(x)
     }
 }
 
-pub struct Connect<IO>(IO);
+impl From<tokio_native_tls::native_tls::TlsConnector> for TlsConnector {
+    fn from(conn: tokio_native_tls::native_tls::TlsConnector) -> Self {
+        Self(conn.into())
+    }
+}
+
+pub struct Connect<IO>(tokio_native_tls::TlsStream<IO>);
 
 impl<IO> Future for Connect<IO>
 where
@@ -33,11 +41,7 @@ where
 
     #[inline]
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // Pin::new(&mut self.0).poll(cx).map(|f| match f {
-        //     Ok(stream) => Ok(stream.into()),
-        //     Err(err) => Err(err),
-        // })
-        unimplemented!()
+        Poll::Ready(Ok(self.0.into()))
     }
 }
 
@@ -69,7 +73,7 @@ pub mod client {
     use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef};
 
     #[derive(Debug)]
-    pub struct TlsStream<IO>(IO);
+    pub struct TlsStream<IO>(tokio_native_tls::TlsStream<IO>);
 
     impl<IO> TlsStream<IO> {
         pub fn get_alpn_protocol(&self) -> Option<&[u8]> {
@@ -77,11 +81,11 @@ pub mod client {
         }
     }
 
-    // impl<IO> From<tokio_rustls::client::TlsStream<IO>> for TlsStream<IO> {
-    //     fn from(stream: tokio_rustls::client::TlsStream<IO>) -> Self {
-    //         TlsStream(stream)
-    //     }
-    // }
+    impl<IO> From<tokio_native_tls::TlsStream<IO>> for TlsStream<IO> {
+        fn from(stream: tokio_native_tls::TlsStream<IO>) -> Self {
+            TlsStream(stream)
+        }
+    }
 
     impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
         fn peer_addr(&self) -> Result<SocketAddr> {

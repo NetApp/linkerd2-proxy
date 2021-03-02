@@ -170,13 +170,13 @@ impl Crt {
 
 #[derive(Clone)]
 pub struct ClientConfig {
-    protocols: Arc<Vec<Vec<u8>>>
+    protocols: Arc<Vec<Vec<u8>>>,
 }
 
 impl ClientConfig {
     pub fn new(protocols: Vec<Vec<u8>>) -> Self {
         Self {
-            protocols: Arc::new(protocols)
+            protocols: Arc::new(protocols),
         }
     }
     pub fn empty() -> Self {
@@ -196,7 +196,7 @@ pub struct ServerConfig {
 impl ServerConfig {
     pub fn new(alpn_protocols: Vec<Vec<u8>>) -> Self {
         Self {
-            alpn_protocols: Arc::new(alpn_protocols)
+            alpn_protocols: Arc::new(alpn_protocols),
         }
     }
     /// Produces a server config that fails to handshake all connections.
