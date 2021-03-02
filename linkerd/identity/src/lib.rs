@@ -1,6 +1,7 @@
 #![deny(warnings, rust_2018_idioms)]
 
 use std::{convert::TryFrom, error, fmt, fs, io, str::FromStr, sync::Arc, time::SystemTime};
+use tracing::debug;
 
 // #[cfg(not(feature = "openssl"))]
 // #[path = "imp/rustls.rs"]
@@ -13,7 +14,6 @@ mod imp;
 pub mod test_util;
 
 pub use linkerd_dns_name::InvalidName;
-use tracing::debug;
 
 /// A DER-encoded X.509 certificate signing request.
 #[derive(Clone, Debug)]
@@ -208,7 +208,6 @@ impl TrustAnchors {
 
     pub fn certify(&self, key: Key, crt: Crt) -> Result<CrtKey, InvalidCrt> {
         debug!("Certifying key {:?} and Certificate {:?}", key, crt);
-        
         let key = self.0.certify(key.0, crt.0)?;
         Ok(CrtKey(key))
     }

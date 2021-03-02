@@ -1,37 +1,29 @@
-use crate::{LocalId, Name};
-use openssl::{ec::{EcKey}, error::ErrorStack, pkey::{self, PKey, Private}, x509::{
+use openssl::{
+    error::ErrorStack,
+    pkey::{PKey, Private},
+    x509::{
         store::{X509Store, X509StoreBuilder},
         X509,
-    }};
+    },
+};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::{error, fmt};
 use tracing::{debug, warn};
 
-#[derive(Clone)]
-pub struct Key {
-   inner: Arc<EcKey<Private>>,
-   pub id: pkey::Id,
-}
+use crate::{LocalId, Name};
+
+#[derive(Clone, Debug)]
+pub struct Key(Arc<PKey<Private>>);
 
 impl Key {
     pub fn from_pkcs8(b: &[u8]) -> Result<Key, Error> {
-        let key= PKey::private_key_from_pkcs8(b).unwrap();
-        let private_key = key.ec_key().unwrap();
-
-        Ok(Key {
-            inner: Arc::new(private_key),
-            id: key.id()
-        })
+        let key = PKey::private_key_from_pkcs8(b)?;
+        Ok(Key(Arc::new(key)))
     }
 }
 
-impl fmt::Debug for Key {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "key id {}", self.id.as_raw())
-    }
-}
-
+#[derive(Clone, Debug)]
 pub struct Error(ErrorStack);
 
 impl From<ErrorStack> for Error {
@@ -49,12 +41,6 @@ impl error::Error for Error {
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, fmt)
-    }
-}
-
-impl fmt::Debug for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, fmt)
     }
 }
 
