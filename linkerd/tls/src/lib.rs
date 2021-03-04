@@ -1,17 +1,16 @@
 #![deny(warnings, rust_2018_idioms)]
 
-use futures::Future;
 pub use linkerd_identity::LocalId;
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io as io;
 use linkerd_io::{AsyncRead, AsyncWrite};
 
-#[cfg(not(feature = "openssl"))]
-#[path = "imp/rustls.rs"]
-mod imp;
 // #[cfg(not(feature = "openssl"))]
-// #[path = "imp/openssl.rs"]
+// #[path = "imp/rustls.rs"]
 // mod imp;
+#[cfg(not(feature = "openssl"))]
+#[path = "imp/openssl.rs"]
+mod imp;
 
 mod protocol;
 
@@ -24,9 +23,7 @@ pub use self::{
     server::{ClientId, ConditionalServerTls, NewDetectTls, NoServerTls, ServerTls},
 };
 use std::{
-    pin::Pin,
     sync::Arc,
-    task::{Context, Poll},
 };
 
 #[derive(Clone)]
@@ -51,23 +48,6 @@ impl From<Arc<ClientConfig>> for TlsConnector {
     }
 }
 
-pub struct Connect<IO>(imp::Connect<IO>);
-
-impl<IO> Future for Connect<IO>
-where
-    IO: AsyncRead + AsyncWrite + Unpin,
-{
-    type Output = io::Result<client::TlsStream<IO>>;
-
-    #[inline]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.0).poll(cx).map(|f| match f {
-            Ok(stream) => Ok(stream.into()),
-            Err(err) => Err(err),
-        })
-    }
-}
-
 #[derive(Clone)]
 pub struct TlsAcceptor(imp::TlsAcceptor);
 
@@ -76,35 +56,16 @@ impl TlsAcceptor {
         Self(imp::TlsAcceptor::new(conf))
     }
 
-    pub fn accept<IO>(&self, stream: IO) -> Accept<IO>
+    pub async fn accept<IO>(&self, stream: IO) -> io::Result<server::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        Accept(self.0.accept(stream))
+        Ok(self.0.accept(stream).await.unwrap().into())
     }
 }
 
 impl From<Arc<ServerConfig>> for TlsAcceptor {
     fn from(conf: Arc<ServerConfig>) -> Self {
         TlsAcceptor::new(conf.clone())
-    }
-}
-
-/// Future returned from `TlsAcceptor::accept` which will resolve
-/// once the accept handshake has finished.
-pub struct Accept<IO>(imp::Accept<IO>);
-
-impl<IO> Future for Accept<IO>
-where
-    IO: AsyncRead + AsyncWrite + Unpin,
-{
-    type Output = io::Result<server::TlsStream<IO>>;
-
-    #[inline]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.0).poll(cx).map(|f| match f {
-            Ok(stream) => Ok(stream.into()),
-            Err(err) => Err(err),
-        })
     }
 }

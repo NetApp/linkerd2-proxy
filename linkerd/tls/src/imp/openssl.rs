@@ -7,11 +7,12 @@ use std::{
     task::{Context, Poll},
 };
 use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef, ClientId};
-use openssl::ssl::{SslConnector, SslMethod, Ssl};
+use openssl::ssl;
+use openssl::ssl::{SslConnector, SslMethod, Ssl, SslAcceptor};
 use std::net::SocketAddr;
 
 #[derive(Clone)]
-pub struct TlsConnector(openssl::ssl::SslConnector);
+pub struct TlsConnector(ssl::SslConnector);
 
 impl TlsConnector {
     pub fn new(_conf: Arc<ClientConfig>) -> Self {
@@ -36,33 +37,26 @@ impl TlsConnector {
     }
 }
 
-pub struct Connect<IO>(TlsStream<IO>);
-
-impl<IO> Future for Connect<IO>
-where
-    IO: AsyncRead + AsyncWrite + Unpin,
-{
-    type Output = Result<TlsStream<IO>>;
-
-    #[inline]
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unimplemented!()
-    }
-}
-
 #[derive(Clone)]
-pub struct TlsAcceptor;
+pub struct TlsAcceptor(ssl::SslAcceptor);
 
 impl TlsAcceptor {
     pub fn new(_conf: Arc<ServerConfig>) -> Self {
-        unimplemented!()
+        let acc = SslAcceptor::mozilla_modern(SslMethod::tls())
+            .unwrap()
+            .build();
+        Self(acc)
     }
 
-    pub fn accept<IO>(&self, _stream: IO) -> Accept<IO>
+    pub async fn accept<IO>(&self, stream: IO) -> Result<server::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        unimplemented!()
+        let ssl = Ssl::new(self.0.context()).unwrap();
+        let mut s = TlsStream::new(ssl, stream);
+
+        Pin::new(&mut s.0).accept().await.unwrap();
+        Ok(s)
     }
 }
 
