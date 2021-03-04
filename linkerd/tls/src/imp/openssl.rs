@@ -1,4 +1,3 @@
-use futures::Future;
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io::{AsyncRead, AsyncWrite, Result, PeerAddr, ReadBuf};
 use std::{
@@ -42,10 +41,8 @@ pub struct TlsAcceptor(ssl::SslAcceptor);
 
 impl TlsAcceptor {
     pub fn new(_conf: Arc<ServerConfig>) -> Self {
-        let acc = SslAcceptor::mozilla_modern(SslMethod::tls())
-            .unwrap()
-            .build();
-        Self(acc)
+        let acc = SslAcceptor::mozilla_modern(SslMethod::tls()).unwrap();
+        Self(acc.build())
     }
 
     pub async fn accept<IO>(&self, stream: IO) -> Result<server::TlsStream<IO>>
@@ -57,20 +54,6 @@ impl TlsAcceptor {
 
         Pin::new(&mut s.0).accept().await.unwrap();
         Ok(s)
-    }
-}
-
-pub struct Accept<IO>(IO);
-
-impl<IO> Future for Accept<IO>
-    where
-        IO: AsyncRead + AsyncWrite + Unpin,
-{
-    type Output = Result<server::TlsStream<IO>>;
-
-    #[inline]
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unimplemented!()
     }
 }
 
