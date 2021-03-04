@@ -1,47 +1,52 @@
 use futures::Future;
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
-use linkerd_io::{AsyncRead, AsyncWrite, Result};
+use linkerd_io::{AsyncRead, AsyncWrite, Result, PeerAddr, ReadBuf};
 use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
+use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef, ClientId};
+use openssl::ssl::{SslConnector, SslMethod, Ssl};
+use std::net::SocketAddr;
 
 #[derive(Clone)]
-pub struct TlsConnector(tokio_native_tls::TlsConnector);
+pub struct TlsConnector(openssl::ssl::SslConnector);
 
 impl TlsConnector {
     pub fn new(_conf: Arc<ClientConfig>) -> Self {
-        let conn = tokio_native_tls::native_tls::TlsConnector::new().unwrap();
-        conn.into()
+        let conn = SslConnector::builder(SslMethod::tls())
+            .unwrap()
+            .build();
+        Self(conn)
     }
 
-    pub fn connect<IO>(&self, domain: Name, stream: IO) -> Connect<IO>
+    pub async fn connect<IO>(&self, domain: Name, stream: IO) -> Result<client::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        let x = self.0.connect(domain.as_ref().into(), stream).unwrap();
-        Connect(x)
+        let ssl = self.0
+            .configure()
+            .unwrap()
+            .into_ssl(domain.as_ref())
+            .unwrap();
+        let mut s = TlsStream::new(ssl, stream);
+        Pin::new(&mut s.0).connect().await.unwrap();
+        Ok(s)
     }
 }
 
-impl From<tokio_native_tls::native_tls::TlsConnector> for TlsConnector {
-    fn from(conn: tokio_native_tls::native_tls::TlsConnector) -> Self {
-        Self(conn.into())
-    }
-}
-
-pub struct Connect<IO>(tokio_native_tls::TlsStream<IO>);
+pub struct Connect<IO>(TlsStream<IO>);
 
 impl<IO> Future for Connect<IO>
 where
     IO: AsyncRead + AsyncWrite + Unpin,
 {
-    type Output = Result<client::TlsStream<IO>>;
+    type Output = Result<TlsStream<IO>>;
 
     #[inline]
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Poll::Ready(Ok(self.0.into()))
+        unimplemented!()
     }
 }
 
@@ -61,168 +66,130 @@ impl TlsAcceptor {
     }
 }
 
-pub mod client {
-    use std::{
-        net::SocketAddr,
-        pin::Pin,
-        task::{Context, Poll},
-    };
-
-    use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result};
-
-    use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef};
-
-    #[derive(Debug)]
-    pub struct TlsStream<IO>(tokio_native_tls::TlsStream<IO>);
-
-    impl<IO> TlsStream<IO> {
-        pub fn get_alpn_protocol(&self) -> Option<&[u8]> {
-            unimplemented!()
-        }
-    }
-
-    impl<IO> From<tokio_native_tls::TlsStream<IO>> for TlsStream<IO> {
-        fn from(stream: tokio_native_tls::TlsStream<IO>) -> Self {
-            TlsStream(stream)
-        }
-    }
-
-    impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
-        fn peer_addr(&self) -> Result<SocketAddr> {
-            unimplemented!()
-        }
-    }
-
-    impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
-        #[inline]
-        fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
-            unimplemented!()
-        }
-    }
-
-    impl<IO> AsyncRead for TlsStream<IO>
-    where
-        IO: AsyncRead + AsyncWrite + Unpin,
-    {
-        fn poll_read(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            buf: &mut ReadBuf<'_>,
-        ) -> Poll<Result<()>> {
-            Pin::new(&mut self.0).poll_read(cx, buf)
-        }
-    }
-
-    impl<IO> AsyncWrite for TlsStream<IO>
-    where
-        IO: AsyncRead + AsyncWrite + Unpin,
-    {
-        fn poll_write(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            buf: &[u8],
-        ) -> Poll<Result<usize>> {
-            Pin::new(&mut self.0).poll_write(cx, buf)
-        }
-
-        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-            Pin::new(&mut self.0).poll_flush(cx)
-        }
-
-        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-            Pin::new(&mut self.0).poll_shutdown(cx)
-        }
-    }
-}
-
-pub mod server {
-    use std::{
-        net::SocketAddr,
-        pin::Pin,
-        task::{Context, Poll},
-    };
-
-    use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result};
-
-    use crate::{ClientId, HasNegotiatedProtocol, NegotiatedProtocolRef};
-
-    #[derive(Debug)]
-    pub struct TlsStream<IO>(IO);
-
-    impl<IO> TlsStream<IO> {
-        pub fn client_identity(&self) -> Option<ClientId> {
-            unimplemented!()
-        }
-    }
-
-    // impl<IO> From<tokio_rustls::server::TlsStream<IO>> for TlsStream<IO> {
-    //     fn from(stream: tokio_rustls::server::TlsStream<IO>) -> Self {
-    //         TlsStream(stream)
-    //     }
-    // }
-
-    impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
-        fn peer_addr(&self) -> Result<SocketAddr> {
-            unimplemented!()
-        }
-    }
-
-    impl<IO> AsyncRead for TlsStream<IO>
-    where
-        IO: AsyncRead + AsyncWrite + Unpin,
-    {
-        fn poll_read(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            buf: &mut ReadBuf<'_>,
-        ) -> Poll<Result<()>> {
-            Pin::new(&mut self.0).poll_read(cx, buf)
-        }
-    }
-
-    impl<IO> AsyncWrite for TlsStream<IO>
-    where
-        IO: AsyncRead + AsyncWrite + Unpin,
-    {
-        fn poll_write(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            buf: &[u8],
-        ) -> Poll<Result<usize>> {
-            Pin::new(&mut self.0).poll_write(cx, buf)
-        }
-
-        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-            Pin::new(&mut self.0).poll_flush(cx)
-        }
-
-        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-            Pin::new(&mut self.0).poll_shutdown(cx)
-        }
-    }
-
-    impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
-        #[inline]
-        fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
-            unimplemented!()
-        }
-    }
-}
-
 pub struct Accept<IO>(IO);
 
 impl<IO> Future for Accept<IO>
-where
-    IO: AsyncRead + AsyncWrite + Unpin,
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
 {
     type Output = Result<server::TlsStream<IO>>;
 
     #[inline]
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         unimplemented!()
-        // Pin::new(&mut self.0).poll(cx).map(|f| match f {
-        //     Ok(stream) => Ok(stream.into()),
-        //     Err(err) => Err(err),
-        // })
     }
 }
+
+#[derive(Debug)]
+pub struct TlsStream<IO>(tokio_openssl::SslStream<IO>);
+
+impl<IO> TlsStream<IO>
+    where
+        IO: AsyncRead + AsyncWrite,
+{
+    pub fn new(ssl: Ssl, stream: IO) -> Self {
+        Self(tokio_openssl::SslStream::new(ssl, stream).unwrap())
+    }
+}
+
+impl<IO> TlsStream<IO> {
+    pub fn get_alpn_protocol(&self) -> Option<&[u8]> {
+        self.0.ssl().selected_alpn_protocol()
+    }
+
+    pub fn client_identity(&self) -> Option<ClientId> {
+        None
+    }
+}
+
+impl<IO> From<tokio_openssl::SslStream<IO>> for TlsStream<IO> {
+    fn from(stream: tokio_openssl::SslStream<IO>) -> Self {
+        TlsStream(stream)
+    }
+}
+
+impl<IO: PeerAddr> PeerAddr for TlsStream<IO> {
+    fn peer_addr(&self) -> Result<SocketAddr> {
+        unimplemented!()
+    }
+}
+
+impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
+    #[inline]
+    fn negotiated_protocol(&self) -> Option<NegotiatedProtocolRef<'_>> {
+        unimplemented!()
+    }
+}
+
+impl<IO> AsyncRead for TlsStream<IO>
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<Result<()>> {
+        Pin::new(&mut self.0).poll_read(cx, buf)
+    }
+}
+
+impl<IO> AsyncWrite for TlsStream<IO>
+    where
+        IO: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize>> {
+        Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        Pin::new(&mut self.0).poll_shutdown(cx)
+    }
+}
+
+pub mod client {
+    pub use super::TlsStream;
+}
+
+pub mod server {
+    pub use super::TlsStream;
+}
+
+// mod tests {
+//     use std::net::ToSocketAddrs;
+//     use linkerd_io::{AsyncWriteExt, AsyncReadExt};
+//     use super::TlsConnector;
+//     use linkerd_identity::{Name, ClientConfig};
+//     use std::sync::Arc;
+//     use std::str::FromStr;
+//     use tokio::net::TcpStream;
+//
+//     #[tokio::test]
+//     async fn google() {
+//         let addr = "google.com:443".to_socket_addrs().unwrap().next().unwrap();
+//         let stream = TcpStream::connect(&addr).await.unwrap();
+//         let connector = TlsConnector::new(Arc::new(ClientConfig::empty()));
+//         let domain = Name::from_str("google.com").unwrap();
+//         let mut stream = connector.connect(domain, stream).await.unwrap();
+//
+//         // Pin::new(&mut stream).connect().await.unwrap();
+//         stream.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
+//
+//         let mut buf = vec![];
+//         stream.read_to_end(&mut buf).await.unwrap();
+//         let response = String::from_utf8_lossy(&buf);
+//         let response = response.trim_end();
+//         //
+//         // any response code is fine
+//         assert!(response.starts_with("HTTP/1.0 "));
+//         assert!(response.ends_with("</html>") || response.ends_with("</HTML>"));
+//     }
+// }

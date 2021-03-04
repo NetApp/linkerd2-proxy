@@ -6,12 +6,12 @@ use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io as io;
 use linkerd_io::{AsyncRead, AsyncWrite};
 
-// #[cfg(not(feature = "openssl"))]
-// #[path = "imp/rustls.rs"]
-// mod imp;
 #[cfg(not(feature = "openssl"))]
-#[path = "imp/openssl.rs"]
+#[path = "imp/rustls.rs"]
 mod imp;
+// #[cfg(not(feature = "openssl"))]
+// #[path = "imp/openssl.rs"]
+// mod imp;
 
 mod protocol;
 
@@ -37,11 +37,11 @@ impl TlsConnector {
         Self(imp::TlsConnector::new(conf))
     }
 
-    pub fn connect<IO>(&self, domain: Name, stream: IO) -> Connect<IO>
+    pub async fn connect<IO>(&self, domain: Name, stream: IO) -> io::Result<client::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        Connect(self.0.connect(domain, stream))
+        Ok(self.0.connect(domain, stream).await.unwrap().into())
     }
 }
 
