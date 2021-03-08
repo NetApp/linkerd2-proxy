@@ -322,6 +322,9 @@ impl error::Error for InvalidCrt {
 pub struct ClientConfig(pub imp::ClientConfig);
 
 impl ClientConfig {
+    pub fn empty() -> Self {
+        Self(imp::ClientConfig::empty())
+    }
     pub fn set_protocols(&mut self, protocols: Vec<Vec<u8>>) {
         self.0.set_protocols(protocols);
     }

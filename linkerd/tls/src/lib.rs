@@ -22,18 +22,12 @@ pub use self::{
     protocol::{HasNegotiatedProtocol, NegotiatedProtocol, NegotiatedProtocolRef},
     server::{ClientId, ConditionalServerTls, NewDetectTls, NoServerTls, ServerTls},
 };
-use std::{
-    sync::Arc,
-};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct TlsConnector(imp::TlsConnector);
 
 impl TlsConnector {
-    pub fn new(conf: Arc<ClientConfig>) -> Self {
-        Self(imp::TlsConnector::new(conf))
-    }
-
     pub async fn connect<IO>(&self, domain: Name, stream: IO) -> io::Result<client::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
@@ -42,9 +36,15 @@ impl TlsConnector {
     }
 }
 
+impl From<imp::TlsConnector> for TlsConnector {
+    fn from(connector: imp::TlsConnector) -> Self {
+        TlsConnector(connector)
+    }
+}
+
 impl From<Arc<ClientConfig>> for TlsConnector {
     fn from(conf: Arc<ClientConfig>) -> Self {
-        TlsConnector::new(conf.clone())
+        conf.into()
     }
 }
 
@@ -52,10 +52,6 @@ impl From<Arc<ClientConfig>> for TlsConnector {
 pub struct TlsAcceptor(imp::TlsAcceptor);
 
 impl TlsAcceptor {
-    pub fn new(conf: Arc<ServerConfig>) -> Self {
-        Self(imp::TlsAcceptor::new(conf))
-    }
-
     pub async fn accept<IO>(&self, stream: IO) -> io::Result<server::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
@@ -64,8 +60,14 @@ impl TlsAcceptor {
     }
 }
 
+impl From<imp::TlsAcceptor> for TlsAcceptor {
+    fn from(acceptor: imp::TlsAcceptor) -> Self {
+        TlsAcceptor(acceptor)
+    }
+}
+
 impl From<Arc<ServerConfig>> for TlsAcceptor {
     fn from(conf: Arc<ServerConfig>) -> Self {
-        TlsAcceptor::new(conf.clone())
+        conf.into()
     }
 }

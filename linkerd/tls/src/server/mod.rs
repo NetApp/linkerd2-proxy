@@ -351,7 +351,7 @@ where
     // Determine the peer's identity, if it exist.
     let client_id = io.client_identity();
     // Extract the negotiated protocol for the stream.
-    let negotiated_protocol = io.negotiated_protocol().map(|prot| prot.to_owned());
+    let negotiated_protocol = io.negotiated_protocol().map(|p| p.to_owned());
 
     debug!(client.id = ?client_id, alpn = ?negotiated_protocol, "Accepted TLS connection");
     let tls = ServerTls::Established {

@@ -1,31 +1,25 @@
+use crate::{ClientId, HasNegotiatedProtocol, NegotiatedProtocolRef};
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
-use linkerd_io::{AsyncRead, AsyncWrite, Result, PeerAddr, ReadBuf};
+use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result};
+use openssl::ssl;
+use openssl::ssl::{Ssl, SslAcceptor, SslConnector, SslMethod};
+use std::net::SocketAddr;
 use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
-use crate::{HasNegotiatedProtocol, NegotiatedProtocolRef, ClientId};
-use openssl::ssl;
-use openssl::ssl::{SslConnector, SslMethod, Ssl, SslAcceptor};
-use std::net::SocketAddr;
 
 #[derive(Clone)]
 pub struct TlsConnector(ssl::SslConnector);
 
 impl TlsConnector {
-    pub fn new(_conf: Arc<ClientConfig>) -> Self {
-        let conn = SslConnector::builder(SslMethod::tls())
-            .unwrap()
-            .build();
-        Self(conn)
-    }
-
     pub async fn connect<IO>(&self, domain: Name, stream: IO) -> Result<client::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        let ssl = self.0
+        let ssl = self
+            .0
             .configure()
             .unwrap()
             .into_ssl(domain.as_ref())
@@ -36,15 +30,17 @@ impl TlsConnector {
     }
 }
 
+impl From<Arc<ClientConfig>> for TlsConnector {
+    fn from(_conf: Arc<ClientConfig>) -> Self {
+        let cb = SslConnector::builder(SslMethod::tls()).unwrap();
+        Self(cb.build())
+    }
+}
+
 #[derive(Clone)]
 pub struct TlsAcceptor(ssl::SslAcceptor);
 
 impl TlsAcceptor {
-    pub fn new(_conf: Arc<ServerConfig>) -> Self {
-        let acc = SslAcceptor::mozilla_modern(SslMethod::tls()).unwrap();
-        Self(acc.build())
-    }
-
     pub async fn accept<IO>(&self, stream: IO) -> Result<server::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
@@ -57,12 +53,19 @@ impl TlsAcceptor {
     }
 }
 
+impl From<Arc<ServerConfig>> for TlsAcceptor {
+    fn from(_conf: Arc<ServerConfig>) -> Self {
+        let acc = SslAcceptor::mozilla_modern(SslMethod::tls()).unwrap();
+        Self(acc.build())
+    }
+}
+
 #[derive(Debug)]
 pub struct TlsStream<IO>(tokio_openssl::SslStream<IO>);
 
 impl<IO> TlsStream<IO>
-    where
-        IO: AsyncRead + AsyncWrite,
+where
+    IO: AsyncRead + AsyncWrite,
 {
     pub fn new(ssl: Ssl, stream: IO) -> Self {
         Self(tokio_openssl::SslStream::new(ssl, stream).unwrap())
@@ -99,8 +102,8 @@ impl<IO> HasNegotiatedProtocol for TlsStream<IO> {
 }
 
 impl<IO> AsyncRead for TlsStream<IO>
-    where
-        IO: AsyncRead + AsyncWrite + Unpin,
+where
+    IO: AsyncRead + AsyncWrite + Unpin,
 {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -112,8 +115,8 @@ impl<IO> AsyncRead for TlsStream<IO>
 }
 
 impl<IO> AsyncWrite for TlsStream<IO>
-    where
-        IO: AsyncRead + AsyncWrite + Unpin,
+where
+    IO: AsyncRead + AsyncWrite + Unpin,
 {
     fn poll_write(
         mut self: Pin<&mut Self>,
@@ -141,32 +144,72 @@ pub mod server {
 }
 
 // mod tests {
-//     use std::net::ToSocketAddrs;
-//     use linkerd_io::{AsyncWriteExt, AsyncReadExt};
 //     use super::TlsConnector;
-//     use linkerd_identity::{Name, ClientConfig};
-//     use std::sync::Arc;
+//     use crate::imp::TlsAcceptor;
+//     use linkerd_identity::{ClientConfig, Name, ServerConfig};
+//     use linkerd_io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
+//     use std::pin::Pin;
 //     use std::str::FromStr;
-//     use tokio::net::TcpStream;
+//     use std::sync::Arc;
+//     use tokio::net::{TcpListener, TcpStream};
+//     use std::net::ToSocketAddrs;
 //
 //     #[tokio::test]
 //     async fn google() {
 //         let addr = "google.com:443".to_socket_addrs().unwrap().next().unwrap();
 //         let stream = TcpStream::connect(&addr).await.unwrap();
-//         let connector = TlsConnector::new(Arc::new(ClientConfig::empty()));
+//         let connector = TlsConnector::from(Arc::new(ClientConfig::empty()));
 //         let domain = Name::from_str("google.com").unwrap();
 //         let mut stream = connector.connect(domain, stream).await.unwrap();
 //
-//         // Pin::new(&mut stream).connect().await.unwrap();
 //         stream.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
 //
 //         let mut buf = vec![];
 //         stream.read_to_end(&mut buf).await.unwrap();
 //         let response = String::from_utf8_lossy(&buf);
 //         let response = response.trim_end();
-//         //
-//         // any response code is fine
-//         assert!(response.starts_with("HTTP/1.0 "));
-//         assert!(response.ends_with("</html>") || response.ends_with("</HTML>"));
-//     }
+
+        // any response code is fine
+        // assert!(response.starts_with("HTTP/1.0 "));
+        // assert!(response.ends_with("</html>") || response.ends_with("</HTML>"));
+    // }
+    //
+    // #[tokio::test]
+    // async fn server() {
+    //     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    //     let addr = listener.local_addr().unwrap();
+    //
+    //     let server = async move {
+    //         let acceptor = TlsAcceptor::from(Arc::new(ServerConfig::empty()));
+    //
+    //         let stream = listener.accept().await.unwrap().0;
+    //         let mut stream = acceptor.accept(stream).await.unwrap();
+    //
+    //         let mut buf = [0; 4];
+    //         stream.read_exact(&mut buf).await.unwrap();
+    //         assert_eq!(&buf, b"asdf");
+    //
+    //         stream.write_all(b"jkl;").await.unwrap();
+    //
+    //         futures::future::poll_fn(|ctx| Pin::new(&mut stream).poll_shutdown(ctx))
+    //             .await
+    //             .unwrap()
+    //     };
+    //
+    //     let client = async {
+    //         let connector = TlsConnector::from(Arc::new(ClientConfig::empty()));
+    //         let name = Name::from_str("localhost").unwrap();
+    //
+    //         let stream = TcpStream::connect(&addr).await.unwrap();
+    //         let mut stream = connector.connect(name, stream).await.unwrap();
+    //
+    //         stream.write_all(b"asdf").await.unwrap();
+    //
+    //         let mut buf = vec![];
+    //         stream.read_to_end(&mut buf).await.unwrap();
+    //         assert_eq!(buf, b"jkl;");
+    //     };
+    //
+    //     futures::future::join(server, client).await;
+    // }
 // }
