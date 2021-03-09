@@ -329,6 +329,10 @@ impl Crt {
 pub struct ClientConfig(rustls::ClientConfig);
 
 impl ClientConfig {
+    pub fn empty() -> Self {
+        Self(rustls::ClientConfig::new())
+    }
+
     pub fn set_protocols(&mut self, protocols: Vec<Vec<u8>>) {
         self.0.set_protocols(&*protocols)
     }

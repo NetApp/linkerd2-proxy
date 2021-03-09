@@ -5,12 +5,12 @@ use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io as io;
 use linkerd_io::{AsyncRead, AsyncWrite};
 
-// #[cfg(not(feature = "openssl"))]
-// #[path = "imp/rustls.rs"]
-// mod imp;
 #[cfg(not(feature = "openssl"))]
-#[path = "imp/openssl.rs"]
+#[path = "imp/rustls.rs"]
 mod imp;
+// #[cfg(not(feature = "openssl"))]
+// #[path = "imp/openssl.rs"]
+// mod imp;
 
 mod protocol;
 
@@ -44,7 +44,7 @@ impl From<imp::TlsConnector> for TlsConnector {
 
 impl From<Arc<ClientConfig>> for TlsConnector {
     fn from(conf: Arc<ClientConfig>) -> Self {
-        conf.into()
+        imp::TlsConnector::from(conf).into()
     }
 }
 
@@ -68,6 +68,6 @@ impl From<imp::TlsAcceptor> for TlsAcceptor {
 
 impl From<Arc<ServerConfig>> for TlsAcceptor {
     fn from(conf: Arc<ServerConfig>) -> Self {
-        conf.into()
+        imp::TlsAcceptor::from(conf).into()
     }
 }

@@ -12,17 +12,24 @@ use webpki::DNSNameRef;
 pub struct TlsConnector(tokio_rustls::TlsConnector);
 
 impl TlsConnector {
-    pub fn new(conf: Arc<ClientConfig>) -> Self {
-        let rustls_config: Arc<rustls::ClientConfig> = conf.as_ref().clone().0.into();
-        Self(tokio_rustls::TlsConnector::from(rustls_config))
-    }
-
     pub fn connect<IO>(&self, domain: Name, stream: IO) -> Connect<IO>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
         let dns = DNSNameRef::try_from_ascii_str(domain.as_ref()).unwrap();
         Connect(self.0.connect(dns, stream))
+    }
+}
+impl From<tokio_rustls::TlsConnector> for TlsConnector {
+    fn from(connector: tokio_rustls::TlsConnector) -> Self {
+        TlsConnector(connector)
+    }
+}
+
+impl From<Arc<ClientConfig>> for TlsConnector {
+    fn from(conf: Arc<ClientConfig>) -> Self {
+        let rustls_config: Arc<rustls::ClientConfig> = conf.as_ref().clone().0.into();
+        tokio_rustls::TlsConnector::from(rustls_config).into()
     }
 }
 
@@ -54,6 +61,19 @@ impl TlsAcceptor {
         IO: AsyncRead + AsyncWrite + Unpin,
     {
         Accept(self.0.accept(stream))
+    }
+}
+
+impl From<tokio_rustls::TlsAcceptor> for TlsAcceptor {
+    fn from(acceptor: tokio_rustls::TlsAcceptor) -> Self {
+        TlsAcceptor(acceptor)
+    }
+}
+
+impl From<Arc<ServerConfig>> for TlsAcceptor {
+    fn from(conf: Arc<ServerConfig>) -> Self {
+        let rustls_config: Arc<rustls::ServerConfig> = conf.as_ref().clone().0.into();
+        tokio_rustls::TlsAcceptor::from(rustls_config).into()
     }
 }
 
@@ -228,7 +248,7 @@ pub mod server {
                 .get_ref()
                 .1
                 .get_alpn_protocol()
-                .map(|b| NegotiatedProtocolRef(b.into()))
+                .map(|b| NegotiatedProtocolRef(b))
         }
     }
 }
