@@ -1,3 +1,11 @@
+use std::{error, fmt};
+use std::sync::Arc;
+use std::time::SystemTime;
+
+#[cfg(all(feature = "openssl-tls", feature = "boring-tls"))]
+compile_error!("Not able to use both openssl and boring");
+
+#[cfg(not(feature = "boring-tls"))]
 use openssl::{
     error::ErrorStack,
     pkey::{PKey, Private},
@@ -6,9 +14,16 @@ use openssl::{
         X509,
     },
 };
-use std::sync::Arc;
-use std::time::SystemTime;
-use std::{error, fmt};
+#[cfg(feature = "boring-tls")]
+use boring::{
+    error::ErrorStack,
+    pkey::{PKey, Private},
+    x509::{
+        store::{X509Store, X509StoreBuilder},
+        X509,
+    },
+};
+
 use tracing::{debug, warn};
 
 use crate::{LocalId, Name};

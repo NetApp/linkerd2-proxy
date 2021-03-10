@@ -9,6 +9,7 @@ publish = false
 [features]
 rustls-tls = ["rustls", "tokio-rustls"]
 openssl-tls = ["openssl", "tokio-openssl"]
+boring-tls = ["boring", "tokio-boring"]
 
 [dependencies]
 async-trait = "0.1"
@@ -25,6 +26,8 @@ rustls = { version = "0.19", optional = true }
 tokio-rustls = { version = "0.22", optional = true }
 tokio-openssl = { version = "0.6.1", optional = true }
 openssl = { version = "0.10.32", optional = true }
+boring = { version = "1.1.2", optional = true }
+tokio-boring = { version = "1.0.0", optional = true }
 tower = "0.4.5"
 tracing = "0.1.23"
 webpki = "0.21"

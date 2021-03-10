@@ -1,8 +1,26 @@
 use crate::{ClientId, HasNegotiatedProtocol, NegotiatedProtocolRef};
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result};
-use openssl::ssl;
-use openssl::ssl::{Ssl, SslAcceptor, SslConnector, SslMethod, SslAcceptorBuilder, SslConnectorBuilder};
+
+#[cfg(all(feature = "openssl-tls", feature = "boring-tls"))]
+compile_error!("Not able to use both openssl and boring");
+
+#[cfg(not(feature = "boring-tls"))]
+use openssl::{
+    ssl,
+    ssl::{Ssl, SslAcceptor, SslConnector, SslMethod, SslAcceptorBuilder, SslConnectorBuilder},
+};
+#[cfg(not(feature = "boring-tls"))]
+use tokio_openssl::SslStream;
+
+#[cfg(feature = "boring-tls")]
+use boring::{
+    ssl,
+    ssl::{Ssl, SslAcceptor, SslConnector, SslMethod, SslAcceptorBuilder, SslConnectorBuilder},
+};
+#[cfg(feature = "boring-tls")]
+use tokio_boring::SslStream;
+
 use std::net::SocketAddr;
 use std::{
     pin::Pin,
@@ -56,7 +74,12 @@ impl TlsAcceptor {
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
+        // TODO: Improve the boring library so that the apis are the same
+        #[cfg(not(feature = "boring-tls"))]
         let ssl = Ssl::new(self.0.context()).unwrap();
+        #[cfg(feature = "boring-tls")]
+        let ssl = Ssl::new(&self.0.into_context()).unwrap();
+
         let mut s = TlsStream::new(ssl, stream);
 
         Pin::new(&mut s.0).accept().await.unwrap();
@@ -83,14 +106,14 @@ impl From<Arc<ServerConfig>> for TlsAcceptor {
 }
 
 #[derive(Debug)]
-pub struct TlsStream<IO>(tokio_openssl::SslStream<IO>);
+pub struct TlsStream<IO>(SslStream<IO>);
 
 impl<IO> TlsStream<IO>
 where
     IO: AsyncRead + AsyncWrite,
 {
     pub fn new(ssl: Ssl, stream: IO) -> Self {
-        Self(tokio_openssl::SslStream::new(ssl, stream).unwrap())
+        Self(SslStream::new(ssl, stream).unwrap())
     }
 }
 
@@ -104,8 +127,8 @@ impl<IO> TlsStream<IO> {
     }
 }
 
-impl<IO> From<tokio_openssl::SslStream<IO>> for TlsStream<IO> {
-    fn from(stream: tokio_openssl::SslStream<IO>) -> Self {
+impl<IO> From<SslStream<IO>> for TlsStream<IO> {
+    fn from(stream: SslStream<IO>) -> Self {
         TlsStream(stream)
     }
 }

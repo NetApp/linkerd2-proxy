@@ -15,6 +15,7 @@ This is used by tests and the executable.
 allow-loopback = ["linkerd-app-outbound/allow-loopback"]
 mock-orig-dst = ["linkerd-app-core/mock-orig-dst"]
 openssl-tls = ["linkerd-app-core/openssl-tls"]
+boring-tls = ["linkerd-app-core/boring-tls"]
 rustls-tls = ["linkerd-app-core/rustls-tls"]
 
 [dependencies]
