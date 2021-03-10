@@ -8,9 +8,11 @@ publish = false
 description = "The main proxy executable"
 
 [features]
-default = ["multicore"]
+default = ["multicore", "rustls-tls"]
 mock-orig-dst  = ["linkerd-app/mock-orig-dst"]
 multicore = ["tokio/rt-multi-thread", "num_cpus"]
+rustls-tls = ["linkerd-app/rustls-tls"]
+openssl-tls = ["linkerd-app/openssl-tls"]
 
 [dependencies]
 futures = "0.3.9"
