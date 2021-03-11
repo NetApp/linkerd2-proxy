@@ -1,31 +1,19 @@
 use crate::{ClientId, HasNegotiatedProtocol, NegotiatedProtocolRef};
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
 use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result};
-
-#[cfg(all(feature = "openssl-tls", feature = "boring-tls"))]
-compile_error!("Not able to use both openssl and boring");
-
-#[cfg(not(feature = "boring-tls"))]
-use openssl::{
-    ssl,
-    ssl::{Ssl, SslAcceptor, SslConnector, SslMethod, SslAcceptorBuilder, SslConnectorBuilder},
-};
-#[cfg(not(feature = "boring-tls"))]
-use tokio_openssl::SslStream;
-
-#[cfg(feature = "boring-tls")]
-use boring::{
-    ssl,
-    ssl::{Ssl, SslAcceptor, SslConnector, SslMethod, SslAcceptorBuilder, SslConnectorBuilder},
-};
-#[cfg(feature = "boring-tls")]
-use tokio_boring::SslStream;
-
 use std::net::SocketAddr;
 use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+};
+
+use {
+    openssl::{
+        ssl,
+        ssl::{Ssl, SslAcceptor, SslConnector, SslMethod, SslAcceptorBuilder, SslConnectorBuilder},
+    },
+    tokio_openssl::SslStream,
 };
 
 #[derive(Clone)]
@@ -74,12 +62,7 @@ impl TlsAcceptor {
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        // TODO: Improve the boring library so that the apis are the same
-        #[cfg(not(feature = "boring-tls"))]
         let ssl = Ssl::new(self.0.context()).unwrap();
-        #[cfg(feature = "boring-tls")]
-        let ssl = Ssl::new(&self.0.into_context()).unwrap();
-
         let mut s = TlsStream::new(ssl, stream);
 
         Pin::new(&mut s.0).accept().await.unwrap();

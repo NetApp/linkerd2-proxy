@@ -2,9 +2,6 @@ use std::{error, fmt};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-#[cfg(all(feature = "openssl-tls", feature = "boring-tls"))]
-compile_error!("Not able to use both openssl and boring");
-
 #[cfg(not(feature = "boring-tls"))]
 use openssl::{
     error::ErrorStack,

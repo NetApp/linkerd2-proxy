@@ -51,11 +51,6 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
 pub struct TlsAcceptor(tokio_rustls::TlsAcceptor);
 
 impl TlsAcceptor {
-    pub fn new(conf: Arc<ServerConfig>) -> Self {
-        let rustls_config: Arc<rustls::ServerConfig> = conf.as_ref().clone().0.into();
-        Self(tokio_rustls::TlsAcceptor::from(rustls_config))
-    }
-
     pub fn accept<IO>(&self, stream: IO) -> Accept<IO>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
