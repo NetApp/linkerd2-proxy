@@ -6,6 +6,7 @@ license = "Apache-2.0"
 edition = "2018"
 
 [features]
+default = ["rustls-tls"]
 test-util = []
 rustls-tls = ["ring", "rustls"]
 openssl-tls = ["openssl"]

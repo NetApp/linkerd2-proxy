@@ -11,7 +11,7 @@ use std::{
 use {
     openssl::{
         ssl,
-        ssl::{Ssl, SslAcceptor, SslConnector, SslMethod, SslAcceptorBuilder, SslConnectorBuilder},
+        ssl::{Ssl, SslAcceptor, SslAcceptorBuilder, SslConnector, SslConnectorBuilder, SslMethod},
     },
     tokio_openssl::SslStream,
 };
@@ -84,7 +84,9 @@ impl From<SslAcceptorBuilder> for TlsAcceptor {
 
 impl From<Arc<ServerConfig>> for TlsAcceptor {
     fn from(_conf: Arc<ServerConfig>) -> Self {
-        SslAcceptor::mozilla_modern(SslMethod::tls()).unwrap().into()
+        SslAcceptor::mozilla_modern(SslMethod::tls())
+            .unwrap()
+            .into()
     }
 }
 

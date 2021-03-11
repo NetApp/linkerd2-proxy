@@ -1,6 +1,6 @@
 use crate::{ClientId, HasNegotiatedProtocol, NegotiatedProtocolRef};
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
-use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result, Error, ErrorKind};
+use linkerd_io::{AsyncRead, AsyncWrite, Error, ErrorKind, PeerAddr, ReadBuf, Result};
 use std::net::SocketAddr;
 use std::{
     pin::Pin,
@@ -11,7 +11,7 @@ use std::{
 use {
     boring::{
         ssl,
-        ssl::{SslAcceptor, SslConnector, SslMethod, SslAcceptorBuilder, SslConnectorBuilder},
+        ssl::{SslAcceptor, SslAcceptorBuilder, SslConnector, SslConnectorBuilder, SslMethod},
     },
     tokio_boring::SslStream,
 };
@@ -29,7 +29,7 @@ impl TlsConnector {
             .configure()
             .unwrap();
         match tokio_boring::connect(conf, domain.as_ref(), stream).await {
-            Ok(ss) => Ok(TlsStream::from(ss)),
+            Ok(ss) => Ok(ss.into()),
             Err(_err) => {
                 println!("Handshake error");
                 Err(Error::new(ErrorKind::Other, "Connection problem"))
@@ -65,7 +65,7 @@ impl TlsAcceptor {
         IO: AsyncRead + AsyncWrite + Unpin,
     {
         match tokio_boring::accept(&self.0, stream).await {
-            Ok(ss) => Ok(TlsStream::from(ss)),
+            Ok(ss) => Ok(ss.into()),
             Err(_err) => {
                 println!("Handshake error");
                 Err(Error::new(ErrorKind::Other, "Connection problem"))
@@ -88,7 +88,9 @@ impl From<SslAcceptorBuilder> for TlsAcceptor {
 
 impl From<Arc<ServerConfig>> for TlsAcceptor {
     fn from(_conf: Arc<ServerConfig>) -> Self {
-        SslAcceptor::mozilla_modern(SslMethod::tls()).unwrap().into()
+        SslAcceptor::mozilla_modern(SslMethod::tls())
+            .unwrap()
+            .into()
     }
 }
 
@@ -165,4 +167,3 @@ pub mod client {
 pub mod server {
     pub use super::TlsStream;
 }
-

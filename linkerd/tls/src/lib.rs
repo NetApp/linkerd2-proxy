@@ -2,8 +2,7 @@
 
 pub use linkerd_identity::LocalId;
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
-use linkerd_io as io;
-use linkerd_io::{AsyncRead, AsyncWrite};
+use linkerd_io::{AsyncRead, AsyncWrite, Result};
 
 #[cfg(feature = "rustls-tls")]
 #[path = "imp/rustls.rs"]
@@ -31,11 +30,11 @@ use std::sync::Arc;
 pub struct TlsConnector(imp::TlsConnector);
 
 impl TlsConnector {
-    pub async fn connect<IO>(&self, domain: Name, stream: IO) -> io::Result<client::TlsStream<IO>>
+    pub async fn connect<IO>(&self, domain: Name, stream: IO) -> Result<client::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        Ok(self.0.connect(domain, stream).await.unwrap().into())
+        self.0.connect(domain, stream).await.map(|s| s.into())
     }
 }
 
@@ -55,11 +54,11 @@ impl From<Arc<ClientConfig>> for TlsConnector {
 pub struct TlsAcceptor(imp::TlsAcceptor);
 
 impl TlsAcceptor {
-    pub async fn accept<IO>(&self, stream: IO) -> io::Result<server::TlsStream<IO>>
+    pub async fn accept<IO>(&self, stream: IO) -> Result<server::TlsStream<IO>>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
-        Ok(self.0.accept(stream).await.unwrap().into())
+        self.0.accept(stream).await.map(|s| s.into())
     }
 }
 

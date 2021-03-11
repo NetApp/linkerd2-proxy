@@ -20,6 +20,7 @@ impl TlsConnector {
         Connect(self.0.connect(dns, stream))
     }
 }
+
 impl From<tokio_rustls::TlsConnector> for TlsConnector {
     fn from(connector: tokio_rustls::TlsConnector) -> Self {
         TlsConnector(connector)
@@ -40,10 +41,7 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Connect<IO> {
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.0).poll(cx).map(|f| match f {
-            Ok(stream) => Ok(stream.into()),
-            Err(err) => Err(err),
-        })
+        Pin::new(&mut self.0).poll(cx).map(|f| f.map(|s| s.into()))
     }
 }
 
@@ -255,9 +253,6 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for Accept<IO> {
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.0).poll(cx).map(|f| match f {
-            Ok(stream) => Ok(stream.into()),
-            Err(err) => Err(err),
-        })
+        Pin::new(&mut self.0).poll(cx).map(|f| f.map(|s| s.into()))
     }
 }
