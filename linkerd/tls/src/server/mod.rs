@@ -36,7 +36,6 @@ impl<IO> TlsStream<IO> {
 
 impl<IO> From<imp::server::TlsStream<IO>> for TlsStream<IO> {
     fn from(stream: imp::server::TlsStream<IO>) -> Self {
-        debug!("server tls stream converting from implementation");
         TlsStream(stream)
     }
 }
@@ -50,7 +49,6 @@ where
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        debug!("Read polling for server tls stream");
         Pin::new(&mut self.0).poll_read(cx, buf)
     }
 }
@@ -64,17 +62,14 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        debug!("Poll write for server tls stream");
         Pin::new(&mut self.0).poll_write(cx, buf)
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        debug!("Poll flush for server tls stream");
         Pin::new(&mut self.0).poll_flush(cx)
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        debug!("Poll shutdown for server tls stream");
         Pin::new(&mut self.0).poll_shutdown(cx)
     }
 }
