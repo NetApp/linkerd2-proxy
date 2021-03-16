@@ -388,3 +388,9 @@ impl AsRef<rustls::ServerConfig> for ServerConfig {
         &self.0
     }
 }
+
+impl fmt::Debug for ServerConfig {
+    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unimplemented!()
+    }
+}

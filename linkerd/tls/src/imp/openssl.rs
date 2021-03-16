@@ -1,20 +1,17 @@
 use crate::{ClientId, HasNegotiatedProtocol, NegotiatedProtocolRef};
 use linkerd_identity::{ClientConfig, Name, ServerConfig};
-use linkerd_io::{AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result};
+use linkerd_io::{self as io, AsyncRead, AsyncWrite, PeerAddr, ReadBuf, Result, ErrorKind};
 use std::net::SocketAddr;
-use std::{
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-};
+use std::{pin::Pin, sync::Arc, task::{Context, Poll}};
 
 use {
     openssl::{
         ssl,
-        ssl::{Ssl, SslAcceptor, SslAcceptorBuilder, SslConnector, SslConnectorBuilder, SslMethod},
+        ssl::{Ssl, SslAcceptor, SslConnector, SslConnectorBuilder, SslMethod},
     },
     tokio_openssl::SslStream,
 };
+use openssl::ssl::SslVerifyMode;
 
 #[derive(Clone)]
 pub struct TlsConnector(ssl::SslConnector);
@@ -31,8 +28,10 @@ impl TlsConnector {
             .into_ssl(domain.as_ref())
             .unwrap();
         let mut s = TlsStream::new(ssl, stream);
-        Pin::new(&mut s.0).connect().await.unwrap();
-        Ok(s)
+        match Pin::new(&mut s.0).connect().await {
+            Ok(_) => Ok(s),
+            Err(err) => Err(io::Error::new(ErrorKind::Other, err)),
+        }
     }
 }
 
@@ -65,8 +64,10 @@ impl TlsAcceptor {
         let ssl = Ssl::new(self.0.context()).unwrap();
         let mut s = TlsStream::new(ssl, stream);
 
-        Pin::new(&mut s.0).accept().await.unwrap();
-        Ok(s)
+        match Pin::new(&mut s.0).accept().await {
+            Ok(_) => Ok(s),
+            Err(err) => Err(io::Error::new(ErrorKind::Other, err)),
+        }
     }
 }
 
@@ -76,16 +77,15 @@ impl From<SslAcceptor> for TlsAcceptor {
     }
 }
 
-impl From<SslAcceptorBuilder> for TlsAcceptor {
-    fn from(builder: SslAcceptorBuilder) -> Self {
-        builder.build().into()
-    }
-}
-
 impl From<Arc<ServerConfig>> for TlsAcceptor {
     fn from(_conf: Arc<ServerConfig>) -> Self {
-        SslAcceptor::mozilla_modern(SslMethod::tls())
-            .unwrap()
+        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())
+            .unwrap();
+
+        builder.set_verify(SslVerifyMode::NONE);
+        builder.set_cipher_list("ECDH").unwrap();
+
+        builder.build()
             .into()
     }
 }

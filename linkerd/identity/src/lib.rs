@@ -336,13 +336,7 @@ impl From<imp::ClientConfig> for ClientConfig {
     }
 }
 
-impl Into<imp::ClientConfig> for ClientConfig {
-    fn into(self) -> imp::ClientConfig {
-        self.0
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ServerConfig(pub imp::ServerConfig);
 
 impl ServerConfig {
@@ -358,12 +352,6 @@ impl ServerConfig {
 impl From<imp::ServerConfig> for ServerConfig {
     fn from(conf: imp::ServerConfig) -> Self {
         Self(conf)
-    }
-}
-
-impl Into<imp::ServerConfig> for ServerConfig {
-    fn into(self) -> imp::ServerConfig {
-        self.0
     }
 }
 

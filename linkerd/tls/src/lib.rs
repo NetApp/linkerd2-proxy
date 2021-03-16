@@ -70,6 +70,7 @@ impl From<imp::TlsAcceptor> for TlsAcceptor {
 
 impl From<Arc<ServerConfig>> for TlsAcceptor {
     fn from(conf: Arc<ServerConfig>) -> Self {
+        tracing::debug!("Constructing {:?}", conf);
         imp::TlsAcceptor::from(conf).into()
     }
 }
