@@ -38,29 +38,17 @@ impl Key {
 }
 
 #[derive(Clone, Debug)]
-pub enum Error {
-    Stack(ErrorStack),
-    Verify(X509VerifyResult),
-}
+pub struct Error(ErrorStack);
 
 impl From<ErrorStack> for Error {
     fn from(err: ErrorStack) -> Self {
-        Error::Stack(err)
-    }
-}
-
-impl From<X509VerifyResult> for Error {
-    fn from(err: X509VerifyResult) -> Self {
-        Error::Verify(err)
+        Self(err)
     }
 }
 
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Error::Stack(err) => err.source(),
-            Error::Verify(err) => err.source()
-        }
+        self.0.source()
     }
 }
 
@@ -96,33 +84,41 @@ impl TrustAnchors {
 
     pub fn certify(&self, _: Key, crt: Crt) -> Result<CrtKey, InvalidCrt> {
         let cert = crt.cert.clone();
-        println!("Checking {:?}", cert);
+        if cert.subject_alt_names()
+            .unwrap()
+            .iter()
+            .filter(|n| n.dnsname().unwrap().to_string() == crt.id.to_string())
+            .next().is_none() {
+
+            return Err(InvalidCrt::SubjectAltName(crt.id.to_string()));
+        }
+
         let mut chain = Stack::new().unwrap();
         for chain_crt in crt.chain.clone() {
-            debug!("Adding {:?}", chain_crt);
             chain.push(chain_crt).unwrap();
         }
 
         let mut context = X509StoreContext::new().unwrap();
-
         match context.init(&self.0, &cert, &chain, |c| {
             match c.verify_cert() {
-                Ok(true) => Ok(Ok(CrtKey {
-                    id: crt.id.clone(),
-                    expiry: crt.expiry.clone(),
-                    client_config: Arc::new(ClientConfig::empty()),
-                    server_config: Arc::new(ServerConfig::empty()),
-                })),
+                Ok(true) => {
+                    Ok(Ok(CrtKey {
+                        id: crt.id.clone(),
+                        expiry: crt.expiry.clone(),
+                        client_config: Arc::new(ClientConfig::empty()),
+                        server_config: Arc::new(ServerConfig::empty()),
+                    }))
+                }
                 Ok(false) => {
-                    Ok(Err(Error::Verify(c.error())))
-                },
+                    Ok(Err(InvalidCrt::Verify(c.error())))
+                }
                 Err(err) => Err(err),
             }
         }) {
             Ok(verify) => {
                 match verify {
                     Ok(crt) => Ok(crt),
-                    Err(err) => Err(err.into()),
+                    Err(err) => Err(err),
                 }
             }
             Err(err) => Err(err.into())
@@ -135,29 +131,41 @@ impl TrustAnchors {
 }
 
 #[derive(Clone, Debug)]
-pub struct InvalidCrt(Error);
+pub enum InvalidCrt {
+    SubjectAltName(String),
+    Verify(X509VerifyResult),
+    General(Error)
+}
 
 impl From<Error> for InvalidCrt {
     fn from(err: Error) -> Self {
-        Self(err)
+        InvalidCrt::General(err)
     }
 }
 
 impl From<ErrorStack> for InvalidCrt {
     fn from(err: ErrorStack) -> Self {
-        Self(err.into())
+        InvalidCrt::General(err.into())
     }
 }
 
 impl fmt::Display for InvalidCrt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        match self {
+            InvalidCrt::SubjectAltName(name) => write!(f, "Subject alt name incorrect {}", name),
+            InvalidCrt::Verify(err) => err.fmt(f),
+            InvalidCrt::General(err) => err.fmt(f)
+        }
     }
 }
 
 impl error::Error for InvalidCrt {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        self.0.source()
+        match self {
+            InvalidCrt::Verify(err) => err.source(),
+            InvalidCrt::General(err) => err.source(),
+            _ => None
+        }
     }
 }
 
