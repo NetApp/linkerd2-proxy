@@ -100,20 +100,21 @@ impl TrustAnchors {
 
         let mut context = X509StoreContext::new().unwrap();
         match context.init(&self.0, &cert, &chain, |c| {
-            match c.verify_cert() {
-                Ok(true) => {
-                    Ok(Ok(CrtKey {
-                        id: crt.id.clone(),
-                        expiry: crt.expiry.clone(),
-                        client_config: Arc::new(ClientConfig::empty()),
-                        server_config: Arc::new(ServerConfig::empty()),
-                    }))
-                }
-                Ok(false) => {
-                    Ok(Err(InvalidCrt::Verify(c.error())))
-                }
-                Err(err) => Err(err),
-            }
+            c.verify_cert().map_err(|ble| InvalidCrt::from(ble))
+            // match c.verify_cert() {
+            //     Ok(true) => {
+            //         Ok(Ok(CrtKey {
+            //             id: crt.id.clone(),
+            //             expiry: crt.expiry.clone(),
+            //             client_config: Arc::new(ClientConfig::empty()),
+            //             server_config: Arc::new(ServerConfig::empty()),
+            //         }))
+            //     }
+            //     Ok(false) => {
+            //         Ok(Err(InvalidCrt::Verify(c.error())))
+            //     }
+            //     Err(err) => Err(err),
+            // }
         }) {
             Ok(verify) => {
                 match verify {
@@ -123,6 +124,15 @@ impl TrustAnchors {
             }
             Err(err) => Err(err.into())
         }
+
+    //      Ok(true) => {
+        //                     Ok(Ok(CrtKey {
+        //                         id: crt.id.clone(),
+        //                         expiry: crt.expiry.clone(),
+        //                         client_config: Arc::new(ClientConfig::empty()),
+        //                         server_config: Arc::new(ServerConfig::empty()),
+        //                     }))
+        //                 }
     }
 
     pub fn client_config(&self) -> Arc<ClientConfig> {
