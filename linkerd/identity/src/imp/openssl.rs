@@ -59,12 +59,12 @@ impl fmt::Display for Error {
 }
 
 #[derive(Clone)]
-pub struct TrustAnchors(Arc<X509Store>);
+pub struct TrustAnchors(Arc<ClientConfig>);
 
 impl TrustAnchors {
     #[cfg(any(test, feature = "test-util"))]
     pub fn empty() -> Self {
-        Self(Arc::new(X509StoreBuilder::new().unwrap().build()))
+        Self(Arc::new(ClientConfig::empty()))
     }
 
     pub fn from_pem(s: &str) -> Option<Self> {
@@ -79,7 +79,8 @@ impl TrustAnchors {
             Err(err) => warn!("unable to construct trust anchor {}", err),
         }
 
-        Some(Self(Arc::new(store.build())))
+        let config = ClientConfig::new(vec![], store.build());
+        Some(Self(Arc::new(config)))
     }
 
     pub fn certify(&self, _: Key, crt: Crt) -> Result<CrtKey, InvalidCrt> {
@@ -98,7 +99,7 @@ impl TrustAnchors {
         }
 
         let mut context = X509StoreContext::new().unwrap();
-        match context.init(&self.0, &cert, &chain, |c| {
+        match context.init(&self.0.root_certs, &cert, &chain, |c| {
             match c.verify_cert() {
                 Ok(true) => {
                     Ok(Ok(true))
@@ -114,7 +115,7 @@ impl TrustAnchors {
                     Ok(_) => Ok(CrtKey {
                         id: crt.id.clone(),
                         expiry: crt.expiry.clone(),
-                        client_config: Arc::new(ClientConfig::empty()),
+                        client_config: self.0.clone(),
                         server_config: Arc::new(ServerConfig::empty()),
                     }),
                     Err(err) => Err(err),
@@ -125,7 +126,7 @@ impl TrustAnchors {
     }
 
     pub fn client_config(&self) -> Arc<ClientConfig> {
-        Arc::new(ClientConfig::empty())
+        self.0.clone()
     }
 }
 
@@ -241,17 +242,19 @@ impl Crt {
 
 #[derive(Clone)]
 pub struct ClientConfig {
-    protocols: Arc<Vec<Vec<u8>>>,
+    pub root_certs: Arc<X509Store>,
+    pub protocols: Arc<Vec<Vec<u8>>>,
 }
 
 impl ClientConfig {
-    pub fn new(protocols: Vec<Vec<u8>>) -> Self {
+    pub fn new(protocols: Vec<Vec<u8>>, root_certs: X509Store) -> Self {
         Self {
+            root_certs: Arc::new(root_certs),
             protocols: Arc::new(protocols),
         }
     }
     pub fn empty() -> Self {
-        ClientConfig::new(Vec::new())
+        ClientConfig::new(Vec::new(), X509StoreBuilder::new().unwrap().build())
     }
 
     pub fn set_protocols(&mut self, protocols: Vec<Vec<u8>>) {
