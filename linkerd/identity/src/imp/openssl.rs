@@ -89,7 +89,6 @@ impl TrustAnchors {
             .iter()
             .filter(|n| n.dnsname().unwrap().to_string() == crt.id.to_string())
             .next().is_none() {
-
             return Err(InvalidCrt::SubjectAltName(crt.id.to_string()));
         }
 
@@ -100,39 +99,29 @@ impl TrustAnchors {
 
         let mut context = X509StoreContext::new().unwrap();
         match context.init(&self.0, &cert, &chain, |c| {
-            c.verify_cert().map_err(|ble| InvalidCrt::from(ble))
-            // match c.verify_cert() {
-            //     Ok(true) => {
-            //         Ok(Ok(CrtKey {
-            //             id: crt.id.clone(),
-            //             expiry: crt.expiry.clone(),
-            //             client_config: Arc::new(ClientConfig::empty()),
-            //             server_config: Arc::new(ServerConfig::empty()),
-            //         }))
-            //     }
-            //     Ok(false) => {
-            //         Ok(Err(InvalidCrt::Verify(c.error())))
-            //     }
-            //     Err(err) => Err(err),
-            // }
+            match c.verify_cert() {
+                Ok(true) => {
+                    Ok(Ok(true))
+                }
+                Ok(false) => {
+                    Ok(Err(InvalidCrt::Verify(c.error())))
+                }
+                Err(err) => Err(err),
+            }
         }) {
             Ok(verify) => {
                 match verify {
-                    Ok(crt) => Ok(crt),
+                    Ok(_) => Ok(CrtKey {
+                        id: crt.id.clone(),
+                        expiry: crt.expiry.clone(),
+                        client_config: Arc::new(ClientConfig::empty()),
+                        server_config: Arc::new(ServerConfig::empty()),
+                    }),
                     Err(err) => Err(err),
                 }
             }
             Err(err) => Err(err.into())
         }
-
-    //      Ok(true) => {
-        //                     Ok(Ok(CrtKey {
-        //                         id: crt.id.clone(),
-        //                         expiry: crt.expiry.clone(),
-        //                         client_config: Arc::new(ClientConfig::empty()),
-        //                         server_config: Arc::new(ServerConfig::empty()),
-        //                     }))
-        //                 }
     }
 
     pub fn client_config(&self) -> Arc<ClientConfig> {
@@ -144,7 +133,7 @@ impl TrustAnchors {
 pub enum InvalidCrt {
     SubjectAltName(String),
     Verify(X509VerifyResult),
-    General(Error)
+    General(Error),
 }
 
 impl From<Error> for InvalidCrt {
